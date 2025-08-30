@@ -14,7 +14,6 @@ import {
   ProgressStats,
   CalendarEvent,
 } from '@/types';
-import { assignmentService, userService } from '@/lib/firebase-db';
 import { Bell, Settings, LogOut, User, Search } from 'lucide-react';
 
 export function Dashboard() {
@@ -22,35 +21,47 @@ export function Dashboard() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
 
-  // Load assignments from Firebase
+  // Mock data for demonstration
   useEffect(() => {
-    if (!session?.user?.id) return;
-
-    setIsLoading(true);
-
-    // Subscribe to real-time updates
-    const unsubscribe = assignmentService.subscribeToUserAssignments(
-      session.user.id,
-      (assignments) => {
-        setAssignments(assignments);
-        setIsLoading(false);
-      }
-    );
-
-    // Store user data in Firestore
-    if (session.user) {
-      userService.createOrUpdate({
-        id: session.user.id,
-        name: session.user.name || '',
-        email: session.user.email || '',
-        image: session.user.image || undefined,
-      });
-    }
-
-    return () => unsubscribe();
-  }, [session?.user?.id]);
+    const mockAssignments: Assignment[] = [
+      {
+        id: '1',
+        title: 'Physics Lab Report',
+        dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), // 5 days from now
+        status: 'pending',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: '2',
+        title: 'Mathematics Assignment',
+        dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // 2 days from now
+        status: 'pending',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: '3',
+        title: 'English Essay',
+        dueDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago (overdue)
+        status: 'overdue',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: '4',
+        title: 'Computer Science Project',
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+        status: 'submitted',
+        fileUrl: '/files/project.pdf',
+        fileName: 'project.pdf',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ];
+    setAssignments(mockAssignments);
+  }, []);
 
   const filteredAssignments = assignments.filter((assignment) =>
     assignment.title.toLowerCase().includes(searchTerm.toLowerCase())
@@ -79,31 +90,6 @@ export function Dashboard() {
     type: 'assignment',
     status: assignment.status,
   }));
-
-  const handleUpload = async (
-    assignment: Omit<Assignment, 'id' | 'createdAt' | 'updatedAt'>
-  ) => {
-    if (!session?.user?.id) return;
-
-    try {
-      await assignmentService.create(assignment, session.user.id);
-      // The real-time subscription will automatically update the assignments
-    } catch (error) {
-      console.error('Error creating assignment:', error);
-      alert('Failed to create assignment. Please try again.');
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-orange-500 mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading your dashboard...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -141,6 +127,8 @@ export function Dashboard() {
                   className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent w-64"
                 />
               </div>
+
+
 
               <div className="relative">
                 <button className="p-2 text-gray-400 hover:text-gray-600">
@@ -217,7 +205,10 @@ export function Dashboard() {
       <UploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
-        onUpload={handleUpload}
+        onUpload={(assignment) => {
+          setAssignments((prev) => [...prev, assignment]);
+          setIsUploadModalOpen(false);
+        }}
       />
     </div>
   );

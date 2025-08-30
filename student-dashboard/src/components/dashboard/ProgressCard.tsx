@@ -119,7 +119,7 @@ export function ProgressCard({ stats }: ProgressCardProps) {
           ) : (
             <div className="flex items-center">
               <Target className="h-4 w-4 mr-2 text-gray-600" />
-              <span className="font-medium">Let&apos;s get started!</span>
+              <span className="font-medium">Let's get started!</span>
             </div>
           )}
         </div>

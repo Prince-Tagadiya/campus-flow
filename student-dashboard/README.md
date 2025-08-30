@@ -1,6 +1,6 @@
 # 🎓 CampusFlow - Student Dashboard
 
-A modern, responsive student management dashboard built with Next.js, React, and Firebase. Features Google OAuth authentication, assignment tracking, deadline countdowns, and comprehensive progress analytics.
+A modern, responsive student management dashboard built with Next.js, React, and the MERN stack. Features Google OAuth authentication, assignment tracking, deadline countdowns, and comprehensive progress analytics.
 
 ## ✨ Features
 
@@ -26,8 +26,7 @@ A modern, responsive student management dashboard built with Next.js, React, and
 - **Frontend**: Next.js 14 (App Router) + React + TypeScript
 - **Styling**: Tailwind CSS + Custom CSS Variables
 - **Authentication**: NextAuth.js with Google OAuth
-- **Database**: Firebase Firestore (NoSQL)
-- **Storage**: Firebase Storage (for PDF uploads)
+- **Database**: MongoDB with Mongoose
 - **Charts**: Recharts for progress visualization
 - **Icons**: Lucide React + Heroicons
 - **Date Handling**: date-fns
@@ -37,7 +36,7 @@ A modern, responsive student management dashboard built with Next.js, React, and
 ### Prerequisites
 
 - Node.js 18+
-- Firebase project
+- MongoDB database
 - Google OAuth credentials
 
 ### 1. Clone the Repository
@@ -62,13 +61,8 @@ Create a `.env.local` file in the root directory:
 GOOGLE_CLIENT_ID=your_google_client_id_here
 GOOGLE_CLIENT_SECRET=your_google_client_secret_here
 
-# Firebase Configuration
-NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
-NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+# MongoDB
+MONGODB_URI=your_mongodb_connection_string_here
 
 # NextAuth
 NEXTAUTH_URL=http://localhost:3000
@@ -85,18 +79,11 @@ NEXTAUTH_SECRET=your_nextauth_secret_here
    - `http://localhost:3000/api/auth/callback/google`
    - `http://localhost:3000/auth/signin`
 
-### 5. Firebase Setup
+### 5. MongoDB Setup
 
-1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Create a new project or select existing one
-3. Enable Authentication (Google sign-in method)
-4. Enable Firestore Database
-5. Enable Storage
-6. Get your project configuration:
-   - Click on Project Settings (gear icon)
-   - Scroll down to "Your apps" section
-   - Click "Add app" → Web app
-   - Copy the config object values to your `.env.local`
+1. Create a MongoDB Atlas account or use local MongoDB
+2. Get your connection string
+3. Update `MONGODB_URI` in `.env.local`
 
 ### 6. Run the Application
 
@@ -131,8 +118,7 @@ src/
 │   ├── Dashboard.tsx      # Main dashboard
 │   └── LoginPage.tsx      # Login page
 ├── lib/                    # Utility functions
-│   ├── firebase.ts        # Firebase configuration
-│   └── firebase-db.ts     # Firebase database operations
+│   └── mongodb.ts         # MongoDB connection
 └── types/                  # TypeScript types
     └── index.ts           # Type definitions
 ```
@@ -178,7 +164,6 @@ src/
 3. Google OAuth sign-in process
 4. Redirected to dashboard upon successful authentication
 5. Session management with NextAuth.js
-6. User data stored in Firebase Firestore
 
 ## 📊 Data Models
 
@@ -187,7 +172,6 @@ src/
 ```typescript
 interface Assignment {
   id: string;
-  userId: string;
   title: string;
   dueDate: Date;
   status: 'pending' | 'submitted' | 'overdue';
@@ -206,8 +190,6 @@ interface User {
   name: string;
   email: string;
   image?: string;
-  createdAt?: Date;
-  updatedAt?: Date;
 }
 ```
 
@@ -251,7 +233,7 @@ Custom Tailwind components are defined in `globals.css`:
 ### Other Platforms
 
 - Update `NEXTAUTH_URL` in environment variables
-- Ensure Firebase project is accessible
+- Ensure MongoDB connection is accessible
 - Configure Google OAuth redirect URIs
 
 ## 🔧 Development
@@ -270,44 +252,8 @@ npm run lint         # Run ESLint
 1. Create component in appropriate directory
 2. Add TypeScript types if needed
 3. Update main Dashboard component
-4. Test with Firebase data
+4. Test with mock data
 5. Integrate with backend when ready
-
-## 🔒 Firebase Security
-
-### Firestore Rules
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Users can only access their own data
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    // Users can only access their own assignments
-    match /assignments/{assignmentId} {
-      allow read, write: if request.auth != null &&
-        request.auth.uid == resource.data.userId;
-    }
-  }
-}
-```
-
-### Storage Rules
-
-```javascript
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /{userId}/{assignmentId}/{fileName} {
-      allow read, write: if request.auth != null &&
-        request.auth.uid == userId;
-    }
-  }
-}
-```
 
 ## 🤝 Contributing
 

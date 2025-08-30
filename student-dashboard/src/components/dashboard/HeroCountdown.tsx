@@ -50,7 +50,7 @@ export function HeroCountdown({ assignment }: HeroCountdownProps) {
           <Clock className="h-12 w-12 mr-3" />
           <h2 className="text-3xl font-bold">No Upcoming Deadlines</h2>
         </div>
-        <p className="text-xl opacity-90">You&apos;re all caught up! 🎉</p>
+        <p className="text-xl opacity-90">You're all caught up! 🎉</p>
       </div>
     );
   }

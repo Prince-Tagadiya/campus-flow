@@ -3,13 +3,10 @@ export interface User {
   name: string;
   email: string;
   image?: string;
-  createdAt?: Date;
-  updatedAt?: Date;
 }
 
 export interface Assignment {
   id: string;
-  userId: string;
   title: string;
   dueDate: Date;
   status: 'pending' | 'submitted' | 'overdue';

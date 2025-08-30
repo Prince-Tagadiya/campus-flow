@@ -1,65 +1,15 @@
 'use client';
 
 import { signIn } from 'next-auth/react';
-import {
-  GraduationCap,
-  BookOpen,
-  Calendar,
-  BarChart3,
-  Users,
-  Award,
-  Globe,
-  Lightbulb,
-} from 'lucide-react';
+import { GraduationCap, BookOpen, Calendar, BarChart3 } from 'lucide-react';
 
 export function LoginPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-white relative overflow-hidden">
-      {/* Background decorative elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        {/* Floating icons */}
-        <div className="absolute top-20 left-10 text-orange-200 animate-bounce">
-          <BookOpen className="h-16 w-16" />
-        </div>
-        <div className="absolute top-40 right-20 text-orange-200 animate-pulse">
-          <Calendar className="h-12 w-12" />
-        </div>
-        <div
-          className="absolute bottom-40 left-20 text-orange-200 animate-bounce"
-          style={{ animationDelay: '1s' }}
-        >
-          <BarChart3 className="h-14 w-14" />
-        </div>
-        <div
-          className="absolute bottom-20 right-10 text-orange-200 animate-pulse"
-          style={{ animationDelay: '2s' }}
-        >
-          <Users className="h-10 w-10" />
-        </div>
-        <div
-          className="absolute top-1/2 left-5 text-orange-200 animate-bounce"
-          style={{ animationDelay: '0.5s' }}
-        >
-          <Award className="h-8 w-8" />
-        </div>
-        <div
-          className="absolute top-1/3 right-5 text-orange-200 animate-pulse"
-          style={{ animationDelay: '1.5s' }}
-        >
-          <Globe className="h-6 w-6" />
-        </div>
-        <div
-          className="absolute bottom-1/3 right-1/3 text-orange-200 animate-bounce"
-          style={{ animationDelay: '0.8s' }}
-        >
-          <Lightbulb className="h-10 w-10" />
-        </div>
-      </div>
-
-      <div className="max-w-4xl w-full mx-auto relative z-10">
-        <div className="text-center mb-12 pt-8">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-white flex items-center justify-center p-4">
+      <div className="max-w-4xl w-full">
+        <div className="text-center mb-12">
           <div className="flex items-center justify-center mb-6">
-            <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-4 rounded-2xl shadow-2xl transform hover:scale-110 transition-transform duration-300">
+            <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-4 rounded-2xl">
               <GraduationCap className="h-12 w-12 text-white" />
             </div>
           </div>
@@ -73,11 +23,9 @@ export function LoginPage() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-8 mb-12">
-          <div className="bg-white rounded-2xl p-8 shadow-xl border border-gray-100 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
+          <div className="bg-white rounded-2xl p-8 shadow-xl border border-gray-100">
             <div className="flex items-center mb-4">
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-3 rounded-xl mr-3">
-                <BookOpen className="h-8 w-8 text-white" />
-              </div>
+              <BookOpen className="h-8 w-8 text-orange-500 mr-3" />
               <h3 className="text-xl font-semibold text-gray-900">
                 Assignment Management
               </h3>
@@ -87,11 +35,9 @@ export function LoginPage() {
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl p-8 shadow-xl border border-gray-100 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
+          <div className="bg-white rounded-2xl p-8 shadow-xl border border-gray-100">
             <div className="flex items-center mb-4">
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-3 rounded-xl mr-3">
-                <Calendar className="h-8 w-8 text-white" />
-              </div>
+              <Calendar className="h-8 w-8 text-orange-500 mr-3" />
               <h3 className="text-xl font-semibold text-gray-900">
                 Deadline Tracking
               </h3>
@@ -101,11 +47,9 @@ export function LoginPage() {
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl p-8 shadow-xl border border-gray-100 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
+          <div className="bg-white rounded-2xl p-8 shadow-xl border border-gray-100">
             <div className="flex items-center mb-4">
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-3 rounded-xl mr-3">
-                <BarChart3 className="h-8 w-8 text-white" />
-              </div>
+              <BarChart3 className="h-8 w-8 text-orange-500 mr-3" />
               <h3 className="text-xl font-semibold text-gray-900">
                 Progress Analytics
               </h3>
@@ -115,11 +59,9 @@ export function LoginPage() {
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl p-8 shadow-xl border border-gray-100 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
+          <div className="bg-white rounded-2xl p-8 shadow-xl border border-gray-100">
             <div className="flex items-center mb-4">
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-3 rounded-xl mr-3">
-                <GraduationCap className="h-8 w-8 text-white" />
-              </div>
+              <GraduationCap className="h-8 w-8 text-orange-500 mr-3" />
               <h3 className="text-xl font-semibold text-gray-900">
                 Smart Organization
               </h3>
@@ -130,43 +72,10 @@ export function LoginPage() {
           </div>
         </div>
 
-        {/* Interactive Stats Section */}
-        <div className="bg-white rounded-2xl p-8 shadow-xl border border-gray-100 mb-12">
-          <h3 className="text-2xl font-bold text-center text-gray-900 mb-6">
-            Why Students Love CampusFlow
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="text-center">
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-white text-xl font-bold">500+</span>
-              </div>
-              <p className="text-sm text-gray-600">Active Students</p>
-            </div>
-            <div className="text-center">
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-white text-xl font-bold">98%</span>
-              </div>
-              <p className="text-sm text-gray-600">Satisfaction Rate</p>
-            </div>
-            <div className="text-center">
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-white text-xl font-bold">24/7</span>
-              </div>
-              <p className="text-sm text-gray-600">Access</p>
-            </div>
-            <div className="text-center">
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-white text-xl font-bold">50+</span>
-              </div>
-              <p className="text-sm text-gray-600">Universities</p>
-            </div>
-          </div>
-        </div>
-
         <div className="text-center">
           <button
             onClick={() => signIn('google', { callbackUrl: '/' })}
-            className="btn-primary text-lg px-8 py-4 flex items-center justify-center mx-auto transform hover:scale-105 transition-transform duration-200"
+            className="btn-primary text-lg px-8 py-4 flex items-center justify-center mx-auto"
           >
             <svg className="w-6 h-6 mr-3" viewBox="0 0 24 24">
               <path
@@ -191,15 +100,6 @@ export function LoginPage() {
           <p className="text-gray-500 mt-4">
             Secure authentication powered by Google OAuth
           </p>
-        </div>
-
-        {/* Bottom decorative elements */}
-        <div className="mt-16 text-center">
-          <div className="flex items-center justify-center space-x-4 text-orange-300">
-            <GraduationCap className="h-6 w-6 animate-pulse" />
-            <span className="text-sm">Empowering Students Worldwide</span>
-            <GraduationCap className="h-6 w-6 animate-pulse" />
-          </div>
         </div>
       </div>
     </div>
