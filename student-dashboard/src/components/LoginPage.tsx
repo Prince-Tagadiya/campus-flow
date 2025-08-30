@@ -1,7 +1,16 @@
 'use client';
 
 import { signIn } from 'next-auth/react';
-import { GraduationCap, BookOpen, Calendar, BarChart3, Users, Award, Globe, Lightbulb } from 'lucide-react';
+import {
+  GraduationCap,
+  BookOpen,
+  Calendar,
+  BarChart3,
+  Users,
+  Award,
+  Globe,
+  Lightbulb,
+} from 'lucide-react';
 
 export function LoginPage() {
   return (
@@ -15,19 +24,34 @@ export function LoginPage() {
         <div className="absolute top-40 right-20 text-orange-200 animate-pulse">
           <Calendar className="h-12 w-12" />
         </div>
-        <div className="absolute bottom-40 left-20 text-orange-200 animate-bounce" style={{ animationDelay: '1s' }}>
+        <div
+          className="absolute bottom-40 left-20 text-orange-200 animate-bounce"
+          style={{ animationDelay: '1s' }}
+        >
           <BarChart3 className="h-14 w-14" />
         </div>
-        <div className="absolute bottom-20 right-10 text-orange-200 animate-pulse" style={{ animationDelay: '2s' }}>
+        <div
+          className="absolute bottom-20 right-10 text-orange-200 animate-pulse"
+          style={{ animationDelay: '2s' }}
+        >
           <Users className="h-10 w-10" />
         </div>
-        <div className="absolute top-1/2 left-5 text-orange-200 animate-bounce" style={{ animationDelay: '0.5s' }}>
+        <div
+          className="absolute top-1/2 left-5 text-orange-200 animate-bounce"
+          style={{ animationDelay: '0.5s' }}
+        >
           <Award className="h-8 w-8" />
         </div>
-        <div className="absolute top-1/3 right-5 text-orange-200 animate-pulse" style={{ animationDelay: '1.5s' }}>
+        <div
+          className="absolute top-1/3 right-5 text-orange-200 animate-pulse"
+          style={{ animationDelay: '1.5s' }}
+        >
           <Globe className="h-6 w-6" />
         </div>
-        <div className="absolute bottom-1/3 right-1/3 text-orange-200 animate-bounce" style={{ animationDelay: '0.8s' }}>
+        <div
+          className="absolute bottom-1/3 right-1/3 text-orange-200 animate-bounce"
+          style={{ animationDelay: '0.8s' }}
+        >
           <Lightbulb className="h-10 w-10" />
         </div>
       </div>
