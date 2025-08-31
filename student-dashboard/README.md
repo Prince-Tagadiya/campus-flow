@@ -27,26 +27,30 @@ A modern, responsive student dashboard built with Next.js, React, and Firebase. 
 ## 🚀 Quick Start
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/Prince-Tagadiya/campus-flow.git
    cd campus-flow/student-dashboard
    ```
 
 2. **Install dependencies**
+
    ```bash
    npm install
    ```
 
 3. **Set up environment variables**
+
    ```bash
    # Copy the example environment file
    cp .env.example .env.local
-   
+
    # Edit .env.local with your actual values
    nano .env.local
    ```
 
 4. **Run the development server**
+
    ```bash
    npm run dev
    ```
@@ -57,6 +61,7 @@ A modern, responsive student dashboard built with Next.js, React, and Firebase. 
 ## 🔐 Environment Variables
 
 ### Required Variables
+
 Create a `.env.local` file with the following variables:
 
 ```bash
@@ -78,6 +83,7 @@ GOOGLE_CLIENT_SECRET=your_google_client_secret_here
 ```
 
 ### 🔒 Security Important Notes
+
 - **NEVER commit `.env.local` to GitHub** - it contains your secrets!
 - The `.env*` files are already in `.gitignore` for security
 - Use `.env.example` as a template (safe to commit)
@@ -86,16 +92,19 @@ GOOGLE_CLIENT_SECRET=your_google_client_secret_here
 ## 🔥 Firebase Setup
 
 1. **Create a Firebase project**
+
    - Go to [Firebase Console](https://console.firebase.google.com/)
    - Click "Add project"
    - Follow the setup wizard
 
 2. **Enable required services**
+
    - **Authentication** → Enable Google sign-in
    - **Firestore Database** → Create database
    - **Storage** → Enable storage
 
 3. **Get your Firebase config**
+
    - Project settings → General → Your apps
    - Copy the config object
 
@@ -107,6 +116,7 @@ GOOGLE_CLIENT_SECRET=your_google_client_secret_here
 ## 🚀 Deployment
 
 ### Firebase Hosting
+
 ```bash
 # Install Firebase CLI globally
 npm install -g firebase-tools
@@ -122,6 +132,7 @@ firebase deploy --only hosting
 ```
 
 ### Environment Variables in Production
+
 - Set environment variables in your hosting platform
 - For Firebase, use Firebase Functions or set them in the hosting configuration
 - Never expose secrets in client-side code
@@ -151,11 +162,13 @@ student-dashboard/
 ## 🔒 Security Best Practices
 
 1. **Environment Variables**
+
    - Use `.env.local` for local development
    - Use `.env.example` as a template
    - Never commit actual secrets
 
 2. **Firebase Security Rules**
+
    - Set up proper Firestore security rules
    - Restrict access to authenticated users only
    - Validate data on both client and server
@@ -179,11 +192,13 @@ student-dashboard/
 ### Common Issues
 
 1. **Environment variables not loading**
+
    - Ensure `.env.local` exists in root directory
    - Restart your development server
    - Check variable names match exactly
 
 2. **Firebase connection errors**
+
    - Verify API keys are correct
    - Check Firebase project settings
    - Ensure services are enabled
