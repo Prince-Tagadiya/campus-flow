@@ -128,8 +128,6 @@ export function Dashboard() {
                 />
               </div>
 
-
-
               <div className="relative">
                 <button className="p-2 text-gray-400 hover:text-gray-600">
                   <Bell className="h-6 w-6" />

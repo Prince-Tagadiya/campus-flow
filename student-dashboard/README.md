@@ -1,259 +1,203 @@
-# 🎓 CampusFlow - Student Dashboard
+# CampusFlow - Student Dashboard
 
-A modern, responsive student management dashboard built with Next.js, React, and the MERN stack. Features Google OAuth authentication, assignment tracking, deadline countdowns, and comprehensive progress analytics.
+A modern, responsive student dashboard built with Next.js, React, and Firebase. Features include assignment management, deadline tracking, progress analytics, and Google OAuth authentication.
 
 ## ✨ Features
 
-### 🚀 Core Functionality
-
-- **Google OAuth Authentication** - Secure login with Google accounts
-- **Assignment Management** - Upload, track, and manage assignments
-- **Deadline Countdown** - Real-time countdown for upcoming deadlines
-- **Progress Tracking** - Visual progress charts and statistics
-- **Storage Management** - Monitor file storage usage with alerts
-- **Interactive Calendar** - Month view with assignment highlights
-
-### 🎨 Design Features
-
-- **Modern UI/UX** - Clean, card-based design inspired by Notion/Trello
-- **Orange Theme** - Consistent orange accent colors throughout
-- **Responsive Design** - Works perfectly on all devices
-- **Smooth Animations** - Hover effects and transitions
-- **Professional Typography** - Inter and Poppins font families
+- **🎯 Hero Countdown Card** - Large text showing nearest deadline with urgency-based colors
+- **📚 Assignment Management** - Upload, track, and manage assignments with status tracking
+- **⏰ Deadline Tracking** - Smart countdown system with visual indicators
+- **📊 Progress Analytics** - Visual insights into academic performance
+- **📅 Interactive Calendar** - Month view with assignment highlights
+- **🔐 Google OAuth** - Secure authentication powered by NextAuth.js
+- **📱 Responsive Design** - Works perfectly on all devices
+- **🎨 Modern UI** - Orange-accented theme with smooth animations
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: Next.js 14 (App Router) + React + TypeScript
-- **Styling**: Tailwind CSS + Custom CSS Variables
-- **Authentication**: NextAuth.js with Google OAuth
-- **Database**: MongoDB with Mongoose
-- **Charts**: Recharts for progress visualization
+- **Frontend**: React + Next.js (App Router) + TypeScript
+- **Styling**: Tailwind CSS + shadcn/ui components
+- **Authentication**: NextAuth.js + Google OAuth
+- **Database**: Firebase Firestore (NoSQL)
+- **Storage**: Firebase Storage
+- **Charts**: Recharts for progress tracking
 - **Icons**: Lucide React + Heroicons
-- **Date Handling**: date-fns
+- **Deployment**: Firebase Hosting
 
-## 🚀 Getting Started
+## 🚀 Quick Start
 
-### Prerequisites
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/Prince-Tagadiya/campus-flow.git
+   cd campus-flow/student-dashboard
+   ```
 
-- Node.js 18+
-- MongoDB database
-- Google OAuth credentials
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-### 1. Clone the Repository
+3. **Set up environment variables**
+   ```bash
+   # Copy the example environment file
+   cp .env.example .env.local
+   
+   # Edit .env.local with your actual values
+   nano .env.local
+   ```
+
+4. **Run the development server**
+   ```bash
+   npm run dev
+   ```
+
+5. **Open your browser**
+   Navigate to [http://localhost:3000](http://localhost:3000)
+
+## 🔐 Environment Variables
+
+### Required Variables
+Create a `.env.local` file with the following variables:
 
 ```bash
-git clone <your-repo-url>
-cd student-dashboard
-```
+# Firebase Configuration
+NEXT_PUBLIC_FIREBASE_API_KEY=your_actual_api_key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project_id.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
+NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 
-### 2. Install Dependencies
+# NextAuth Configuration
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your_nextauth_secret_here
 
-```bash
-npm install
-```
-
-### 3. Environment Setup
-
-Create a `.env.local` file in the root directory:
-
-```env
 # Google OAuth
 GOOGLE_CLIENT_ID=your_google_client_id_here
 GOOGLE_CLIENT_SECRET=your_google_client_secret_here
-
-# MongoDB
-MONGODB_URI=your_mongodb_connection_string_here
-
-# NextAuth
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your_nextauth_secret_here
 ```
 
-### 4. Google OAuth Setup
+### 🔒 Security Important Notes
+- **NEVER commit `.env.local` to GitHub** - it contains your secrets!
+- The `.env*` files are already in `.gitignore` for security
+- Use `.env.example` as a template (safe to commit)
+- Keep your actual secrets private and secure
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing one
-3. Enable Google+ API
-4. Create OAuth 2.0 credentials
-5. Add authorized redirect URIs:
-   - `http://localhost:3000/api/auth/callback/google`
-   - `http://localhost:3000/auth/signin`
+## 🔥 Firebase Setup
 
-### 5. MongoDB Setup
+1. **Create a Firebase project**
+   - Go to [Firebase Console](https://console.firebase.google.com/)
+   - Click "Add project"
+   - Follow the setup wizard
 
-1. Create a MongoDB Atlas account or use local MongoDB
-2. Get your connection string
-3. Update `MONGODB_URI` in `.env.local`
+2. **Enable required services**
+   - **Authentication** → Enable Google sign-in
+   - **Firestore Database** → Create database
+   - **Storage** → Enable storage
 
-### 6. Run the Application
+3. **Get your Firebase config**
+   - Project settings → General → Your apps
+   - Copy the config object
 
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## 📱 Application Structure
-
-```
-src/
-├── app/                    # Next.js App Router
-│   ├── api/               # API routes
-│   │   └── auth/          # NextAuth configuration
-│   ├── globals.css        # Global styles
-│   ├── layout.tsx         # Root layout
-│   └── page.tsx           # Home page
-├── components/             # React components
-│   ├── dashboard/         # Dashboard components
-│   │   ├── HeroCountdown.tsx
-│   │   ├── AssignmentsCard.tsx
-│   │   ├── StorageCard.tsx
-│   │   ├── ProgressCard.tsx
-│   │   ├── CalendarCard.tsx
-│   │   └── UploadModal.tsx
-│   ├── providers/         # Context providers
-│   │   └── AuthProvider.tsx
-│   ├── ui/                # UI components
-│   │   └── LoadingSpinner.tsx
-│   ├── Dashboard.tsx      # Main dashboard
-│   └── LoginPage.tsx      # Login page
-├── lib/                    # Utility functions
-│   └── mongodb.ts         # MongoDB connection
-└── types/                  # TypeScript types
-    └── index.ts           # Type definitions
-```
-
-## 🎯 Key Components
-
-### Hero Countdown
-
-- Full-width countdown timer for nearest deadline
-- Color-coded urgency levels (normal, urgent, overdue)
-- Real-time countdown with days, hours, minutes, seconds
-
-### Assignments Management
-
-- Table view with title, due date, status, and actions
-- Status chips: Pending (gray), Submitted (green), Overdue (red)
-- Action buttons: Upload, View, Submit Now
-- Search functionality and summary statistics
-
-### Storage Usage
-
-- Progress bar showing used vs. total storage
-- Color-coded alerts (green: normal, orange: warning, red: exceeded)
-- Helpful storage tips when near limit
-
-### Progress Tracker
-
-- Circular progress chart with orange fill
-- Statistics for submitted, pending, and total assignments
-- Motivational messages based on completion percentage
-
-### Interactive Calendar
-
-- Month view with assignment indicators
-- Hover details showing assignment information
-- Navigation between months
-- Color-coded event indicators
-
-## 🔐 Authentication Flow
-
-1. User visits the application
-2. Redirected to login page if not authenticated
-3. Google OAuth sign-in process
-4. Redirected to dashboard upon successful authentication
-5. Session management with NextAuth.js
-
-## 📊 Data Models
-
-### Assignment
-
-```typescript
-interface Assignment {
-  id: string;
-  title: string;
-  dueDate: Date;
-  status: 'pending' | 'submitted' | 'overdue';
-  fileUrl?: string;
-  fileName?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-```
-
-### User
-
-```typescript
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  image?: string;
-}
-```
-
-## 🎨 Customization
-
-### Colors
-
-The application uses CSS custom properties for easy theming:
-
-```css
-:root {
-  --primary-orange: #ff6b35;
-  --primary-orange-light: #ff8c42;
-  --primary-orange-dark: #e55a2b;
-  --background: #ffffff;
-  --background-secondary: #f8fafc;
-  --text-primary: #1e293b;
-  --text-secondary: #64748b;
-}
-```
-
-### Components
-
-Custom Tailwind components are defined in `globals.css`:
-
-- `.btn-primary` - Orange gradient buttons
-- `.btn-secondary` - Outline buttons
-- `.card` - Card containers
-- `.input-field` - Form inputs
-- `.status-chip` - Status indicators
+4. **Set up Google OAuth**
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create OAuth 2.0 credentials
+   - Add authorized redirect URIs
 
 ## 🚀 Deployment
 
-### Vercel (Recommended)
-
-1. Push code to GitHub
-2. Connect repository to Vercel
-3. Add environment variables
-4. Deploy automatically
-
-### Other Platforms
-
-- Update `NEXTAUTH_URL` in environment variables
-- Ensure MongoDB connection is accessible
-- Configure Google OAuth redirect URIs
-
-## 🔧 Development
-
-### Available Scripts
-
+### Firebase Hosting
 ```bash
-npm run dev          # Start development server
-npm run build        # Build for production
-npm run start        # Start production server
-npm run lint         # Run ESLint
+# Install Firebase CLI globally
+npm install -g firebase-tools
+
+# Login to Firebase
+firebase login
+
+# Initialize Firebase (if not already done)
+firebase init hosting
+
+# Deploy to Firebase
+firebase deploy --only hosting
 ```
 
-### Adding New Features
+### Environment Variables in Production
+- Set environment variables in your hosting platform
+- For Firebase, use Firebase Functions or set them in the hosting configuration
+- Never expose secrets in client-side code
 
-1. Create component in appropriate directory
-2. Add TypeScript types if needed
-3. Update main Dashboard component
-4. Test with mock data
-5. Integrate with backend when ready
+## 📁 Project Structure
+
+```
+student-dashboard/
+├── src/
+│   ├── app/                 # Next.js App Router
+│   │   ├── api/            # API routes
+│   │   ├── globals.css     # Global styles
+│   │   ├── layout.tsx      # Root layout
+│   │   └── page.tsx        # Home page
+│   ├── components/          # React components
+│   │   ├── dashboard/       # Dashboard-specific components
+│   │   ├── providers/       # Context providers
+│   │   └── ui/             # Reusable UI components
+│   ├── lib/                 # Utility functions
+│   └── types/               # TypeScript type definitions
+├── public/                  # Static assets
+├── .env.example            # Environment template (safe to commit)
+├── .env.local              # Your actual secrets (NEVER commit)
+└── .gitignore              # Git ignore rules
+```
+
+## 🔒 Security Best Practices
+
+1. **Environment Variables**
+   - Use `.env.local` for local development
+   - Use `.env.example` as a template
+   - Never commit actual secrets
+
+2. **Firebase Security Rules**
+   - Set up proper Firestore security rules
+   - Restrict access to authenticated users only
+   - Validate data on both client and server
+
+3. **Authentication**
+   - Use NextAuth.js for secure authentication
+   - Implement proper session management
+   - Add rate limiting for auth endpoints
+
+## 🎨 UI Components
+
+- **HeroCountdown** - Deadline countdown with urgency colors
+- **AssignmentsCard** - Assignment management table
+- **StorageCard** - Storage usage progress bar
+- **ProgressCard** - Circular progress chart
+- **CalendarCard** - Interactive month view calendar
+- **UploadModal** - File upload interface
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Environment variables not loading**
+   - Ensure `.env.local` exists in root directory
+   - Restart your development server
+   - Check variable names match exactly
+
+2. **Firebase connection errors**
+   - Verify API keys are correct
+   - Check Firebase project settings
+   - Ensure services are enabled
+
+3. **Build errors**
+   - Clear `.next` folder: `rm -rf .next`
+   - Reinstall dependencies: `rm -rf node_modules && npm install`
+
+## 📚 Additional Resources
+
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Firebase Documentation](https://firebase.google.com/docs)
+- [NextAuth.js Documentation](https://next-auth.js.org/)
+- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
 
 ## 🤝 Contributing
 
@@ -267,14 +211,10 @@ npm run lint         # Run ESLint
 
 This project is licensed under the MIT License.
 
-## 🆘 Support
+## 🔐 Security
 
-For questions or issues:
-
-1. Check the documentation
-2. Search existing issues
-3. Create a new issue with details
+If you discover any security-related issues, please email security@campusflow.com instead of using the issue tracker.
 
 ---
 
-**Built with ❤️ for modern student management solutions**
+**Remember: Keep your secrets safe and never commit them to version control! 🔐**
