@@ -710,7 +710,7 @@ const StudentDashboard: React.FC = () => {
         .sort((a, b) => a.examDate.getTime() - b.examDate.getTime())
         .slice(0, 3);
       return (
-        <div className="card">
+        <div className="card cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setCurrentPage('exams')}>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Upcoming Exams</h3>
           {upcomingExams.length === 0 ? (
             <p className="text-sm text-gray-500">No upcoming exams.</p>
@@ -1450,6 +1450,98 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
     </div>
   );
 
+  const renderSettings = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="card">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Priority Thresholds
+          </h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                High Priority (days remaining)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="30"
+                value="2"
+                className="input-field"
+                readOnly
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Assignments due within this many days will be marked as High Priority
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Medium Priority (days remaining)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="30"
+                value="5"
+                className="input-field"
+                readOnly
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Assignments due within this many days will be marked as Medium Priority
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Low Priority (days remaining)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="30"
+                value="30"
+                className="input-field"
+                readOnly
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Assignments due within this many days will be marked as Low Priority
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <strong>Note:</strong> Priority thresholds are automatically calculated based on assignment deadlines.
+            </p>
+          </div>
+        </div>
+
+        <div className="card">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Dashboard Customization
+          </h3>
+          <div className="space-y-4">
+            <button
+              onClick={() => setCustomizeMode(!customizeMode)}
+              className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${
+                customizeMode
+                  ? 'bg-red-500 text-white hover:bg-red-600'
+                  : 'bg-primary text-white hover:bg-primary-dark'
+                }`}
+            >
+              {customizeMode ? 'Exit Customize Mode' : 'Enter Customize Mode'}
+            </button>
+            <p className="text-sm text-gray-600">
+              Customize mode allows you to add, remove, and reorder dashboard widgets.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderContent = () => {
     switch (currentPage) {
       case 'dashboard':
@@ -1466,6 +1558,8 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
         return renderStorage();
       case 'account':
         return renderAccount();
+      case 'settings':
+        return renderSettings();
       default:
         return renderDashboard();
     }
