@@ -691,17 +691,6 @@ const StudentDashboard: React.FC = () => {
           </div>
           <div className="card">
             <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <CheckIcon className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Completed</p>
-                <p className="text-2xl font-bold text-gray-900">{assignments.filter((a) => a.status === 'completed').length}</p>
-              </div>
-            </div>
-          </div>
-          <div className="card">
-            <div className="flex items-center space-x-3">
               <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
                 <ClockIcon className="w-6 h-6 text-orange-600" />
               </div>
@@ -711,17 +700,68 @@ const StudentDashboard: React.FC = () => {
               </div>
             </div>
           </div>
-          <div className="card">
-            <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                <BookOpenIcon className="w-6 h-6 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Upcoming Exams</p>
-                <p className="text-2xl font-bold text-gray-900">{exams.filter((e) => e.examDate > new Date()).length}</p>
-              </div>
+        </div>
+      );
+    }
+
+    if (c.id === 'exams') {
+      const upcomingExams = exams
+        .filter((e) => e.examDate > new Date())
+        .sort((a, b) => a.examDate.getTime() - b.examDate.getTime())
+        .slice(0, 3);
+      return (
+        <div className="card">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Upcoming Exams</h3>
+          {upcomingExams.length === 0 ? (
+            <p className="text-sm text-gray-500">No upcoming exams.</p>
+          ) : (
+            <div className="space-y-3">
+              {upcomingExams.map((exam) => {
+                const days = Math.ceil((exam.examDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                return (
+                  <div key={exam.id} className="p-3 bg-blue-50 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-gray-900">{exam.subjectName}</p>
+                        <p className="text-xs text-gray-600">{exam.examType.toUpperCase()} • {exam.examDate.toLocaleDateString()}</p>
+                        <p className="text-xs text-gray-500">{exam.startTime} - {exam.endTime} • {exam.room}</p>
+                      </div>
+                      <span className="text-sm font-semibold text-blue-600">{days} days</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
+          )}
+        </div>
+      );
+    }
+
+    if (c.id === 'materials') {
+      const recentMaterials = materials
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .slice(0, 3);
+      return (
+        <div className="card">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Materials</h3>
+          {recentMaterials.length === 0 ? (
+            <p className="text-sm text-gray-500">No materials uploaded.</p>
+          ) : (
+            <div className="space-y-3">
+              {recentMaterials.map((material) => (
+                <div key={material.id} className="p-3 bg-green-50 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-gray-900">{material.title}</p>
+                      <p className="text-xs text-gray-600">{material.subjectName}</p>
+                      <p className="text-xs text-gray-500">{material.fileType.toUpperCase()} • {formatFileSize(material.fileSize * 1024 * 1024)}</p>
+                    </div>
+                    <span className="text-xs text-gray-500">{material.createdAt.toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       );
     }
