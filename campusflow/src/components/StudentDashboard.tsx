@@ -769,6 +769,35 @@ const StudentDashboard: React.FC = () => {
     }
   }, [currentUser?.id]);
 
+  // Load notifications from Firebase
+  useEffect(() => {
+    if (currentUser?.id) {
+      const notificationsQuery = query(
+        collection(db, 'notifications'),
+        where('studentId', '==', currentUser.id)
+      );
+      
+      const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
+        const notificationsData: Notification[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          notificationsData.push({
+            id: doc.id,
+            studentId: data.studentId,
+            title: data.title,
+            message: data.message,
+            type: data.type,
+            isRead: data.isRead,
+            createdAt: data.createdAt.toDate(),
+          });
+        });
+        setNotifications(notificationsData);
+      });
+      
+      return () => unsubscribe();
+    }
+  }, [currentUser?.id]);
+
   const handleLogout = async () => {
     try {
       await logout();
@@ -975,6 +1004,71 @@ const StudentDashboard: React.FC = () => {
         alert('Failed to delete subject. Please try again.');
       }
     }
+  };
+
+  const handleMarkNotificationAsRead = async (notificationId: string) => {
+    if (!currentUser?.id) return;
+    
+    try {
+      // Update in Firebase
+      await updateDoc(doc(db, 'notifications', notificationId), {
+        isRead: true,
+      });
+      
+      // Update local state
+      setNotifications(notifications.map(n => 
+        n.id === notificationId ? { ...n, isRead: true } : n
+      ));
+      
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+      alert('Failed to mark notification as read. Please try again.');
+    }
+  };
+
+  const handleDeleteNotification = async (notificationId: string) => {
+    if (!currentUser?.id) return;
+    
+    try {
+      // Delete from Firebase
+      await deleteDoc(doc(db, 'notifications', notificationId));
+      
+      // Remove from local state
+      setNotifications(notifications.filter(n => n.id !== notificationId));
+      
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+      alert('Failed to delete notification. Please try again.');
+    }
+  };
+
+  const handleMarkAllNotificationsAsRead = async () => {
+    if (!currentUser?.id) return;
+    
+    try {
+      // Get all unread notifications
+      const unreadNotifications = notifications.filter(n => !n.isRead);
+      
+      // Update all unread notifications in Firebase
+      const updatePromises = unreadNotifications.map(notification =>
+        updateDoc(doc(db, 'notifications', notification.id), {
+          isRead: true,
+        })
+      );
+      
+      await Promise.all(updatePromises);
+      
+      // Update local state
+      setNotifications(notifications.map(n => ({ ...n, isRead: true })));
+      
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+      alert('Failed to mark all notifications as read. Please try again.');
+    }
+  };
+
+  const getUnreadNotificationCount = () => {
+    return notifications.filter(n => !n.isRead).length;
   };
 
   const handleImportExamData = async () => {
@@ -1542,14 +1636,8 @@ const StudentDashboard: React.FC = () => {
     }
 
     if (c.id === 'notifications') {
-      const unreadCount = notifications.filter(n => !n.isRead).length;
+      const unreadCount = getUnreadNotificationCount();
       
-      const handleMarkAsRead = (notificationId: string) => {
-        setNotifications(notifications.map(n => 
-          n.id === notificationId ? { ...n, isRead: true } : n
-        ));
-      };
-
       return (
         <div className="h-full flex flex-col p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg shadow-lg">
           <div className="flex items-center justify-between mb-4">
@@ -1557,7 +1645,11 @@ const StudentDashboard: React.FC = () => {
               <BellIcon className="w-6 h-6 mr-2 text-blue-600" />
               Notifications
             </h3>
-            <span className="text-sm text-gray-500 bg-white px-3 py-1 rounded-full border">
+            <span className={`text-sm px-3 py-1 rounded-full border ${
+              unreadCount > 0 
+                ? 'bg-red-500 text-white border-red-500' 
+                : 'text-gray-500 bg-white border-gray-200'
+            }`}>
               {unreadCount} unread
             </span>
           </div>
@@ -1568,7 +1660,7 @@ const StudentDashboard: React.FC = () => {
                 className={`p-3 rounded-lg transition-all duration-300 cursor-pointer hover:shadow-md ${
                   !n.isRead ? 'bg-orange-50 border-l-4 border-orange-400 hover:bg-orange-100' : 'bg-white hover:bg-gray-50'
                 }`}
-                onClick={() => handleMarkAsRead(n.id)}
+                onClick={() => handleMarkNotificationAsRead(n.id)}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
@@ -1586,11 +1678,19 @@ const StudentDashboard: React.FC = () => {
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center">
                   <BellIcon className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">No notifications</p>
+                  <p className="text-sm text-gray-500">No notifications</p>
                 </div>
               </div>
             )}
           </div>
+          {notifications.length > 5 && (
+            <button 
+              onClick={() => setCurrentPage('notifications')}
+              className="w-full mt-4 text-center text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              View All ({notifications.length})
+            </button>
+          )}
         </div>
       );
     }
@@ -2373,12 +2473,6 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
             <PlusIcon className="w-5 h-5" />
             <span>Add Subject</span>
           </button>
-          <button
-            onClick={handleImportExamData}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium flex items-center space-x-2"
-          >
-            <span>📥 Import Exam Data</span>
-          </button>
         </div>
       </div>
 
@@ -2567,42 +2661,77 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
   const renderNotifications = () => (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Notifications</h1>
-        <button className="btn-secondary">Mark All as Read</button>
+        <div className="flex items-center space-x-4">
+          <h1 className="text-3xl font-bold text-gray-900">Notifications</h1>
+          {getUnreadNotificationCount() > 0 && (
+            <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-semibold">
+              {getUnreadNotificationCount()} unread
+            </span>
+          )}
+        </div>
+        {getUnreadNotificationCount() > 0 && (
+          <button 
+            onClick={handleMarkAllNotificationsAsRead}
+            className="btn-secondary"
+          >
+            Mark All as Read
+          </button>
+        )}
       </div>
 
       <div className="space-y-4">
-        {notifications.map((notification) => (
-          <div
-            key={notification.id}
-            className={`card ${
-              !notification.isRead ? 'border-l-4 border-primary' : ''
-            }`}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {notification.title}
-                </h3>
-                <p className="text-gray-600 mt-1">{notification.message}</p>
-                <p className="text-xs text-gray-500 mt-2">
-                  {notification.createdAt.toLocaleDateString()} at{' '}
-                  {notification.createdAt.toLocaleTimeString()}
-                </p>
-              </div>
-              <div className="flex space-x-2">
-                {!notification.isRead && (
-                  <button className="text-primary hover:text-orange-600 text-sm font-medium">
-                    Mark Read
+        {notifications.length === 0 ? (
+          <div className="card text-center py-12">
+            <BellIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">No Notifications</h3>
+            <p className="text-gray-600">You're all caught up!</p>
+          </div>
+        ) : (
+          notifications.map((notification) => (
+            <div
+              key={notification.id}
+              className={`card ${
+                !notification.isRead ? 'border-l-4 border-primary bg-blue-50' : ''
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {notification.title}
+                    </h3>
+                    {!notification.isRead && (
+                      <span className="bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
+                        New
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-gray-600 mt-1">{notification.message}</p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {notification.createdAt.toLocaleDateString()} at{' '}
+                    {notification.createdAt.toLocaleTimeString()}
+                  </p>
+                </div>
+                <div className="flex space-x-2">
+                  {!notification.isRead && (
+                    <button 
+                      onClick={() => handleMarkNotificationAsRead(notification.id)}
+                      className="text-primary hover:text-orange-600 text-sm font-medium"
+                    >
+                      Mark Read
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => handleDeleteNotification(notification.id)}
+                    className="text-red-600 hover:text-red-700 text-sm font-medium"
+                  >
+                    Delete
                   </button>
-                )}
-                <button className="text-red-600 hover:text-red-700 text-sm font-medium">
-                  Delete
-                </button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
