@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { doc, setDoc, collection, addDoc, updateDoc, deleteDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { Responsive, WidthProvider } from 'react-grid-layout';
+import 'react-grid-layout/css/styles.css';
+import 'react-grid-layout/css/styles.css';
 import {
   ClockIcon,
   UserIcon,
@@ -615,7 +618,6 @@ const StudentDashboard: React.FC = () => {
   // Navigation items
   const navigationItems = [
     { id: 'dashboard', name: 'Dashboard', icon: ChartBarIcon },
-    { id: 'next-exam', name: 'Next Exam', icon: BookOpenIcon },
     { id: 'assignments', name: 'Assignments', icon: DocumentTextIcon },
     { id: 'exams', name: 'Exams', icon: BookOpenIcon },
     { id: 'subjects', name: 'Subjects', icon: BookOpenIcon },
@@ -1267,6 +1269,7 @@ const StudentDashboard: React.FC = () => {
   };
 
   const renderDashboard = () => {
+    const ResponsiveGridLayout = WidthProvider(Responsive);
     const ordered = [...cards].sort((a, b) => a.order - b.order).filter((c) => c.enabled);
 
     return (
@@ -1310,24 +1313,44 @@ const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Header */}
-        <div className="mb-6">
+        {/* Header with Edit Mode Toggle */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
             <h1 className="text-2xl font-bold text-gray-900">
               Welcome back, {currentUser?.name?.split(' ')[0]}! 👋
             </h1>
-          <p className="text-gray-600">Here is your dashboard overview.</p>
+            <p className="text-gray-600">Here is your dashboard overview.</p>
+          </div>
+          <button
+            onClick={() => setIsEditMode(!isEditMode)}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              isEditMode 
+                ? 'bg-red-600 hover:bg-red-700 text-white' 
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+          >
+            {isEditMode ? 'Save Layout' : 'Rearrange Widgets'}
+          </button>
         </div>
 
-        {/* Stable CSS grid (no RGL) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 auto-rows-[minmax(260px,auto)]">
-            {ordered.map((c) => (
-            <div key={c.id} className={`${getCardSpanClass(c.size)} ${getCardHeightClass(c.size)} overflow-hidden`}>
-                {renderCardById(c)}
-              </div>
-            ))}
-          </div>
-
-        {/* Widget Tray removed */}
+        {/* Draggable Grid Layout */}
+        <ResponsiveGridLayout
+          className="layout"
+          layouts={{ lg: widgetLayout }}
+          breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+          cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
+          rowHeight={100}
+          isDraggable={isEditMode}
+          isResizable={isEditMode}
+          onLayoutChange={handleLayoutChange}
+          margin={[16, 16]}
+        >
+          {ordered.map((c) => (
+            <div key={c.id} className="overflow-hidden">
+              {renderCardById(c)}
+            </div>
+          ))}
+        </ResponsiveGridLayout>
       </div>
     );
   };
@@ -2456,76 +2479,26 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
     </div>
   );
 
-  const renderNextExam = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Next Exam</h1>
-      </div>
+  // Widget layout state
+  const [widgetLayout, setWidgetLayout] = useState([
+    { i: 'welcome', x: 0, y: 0, w: 6, h: 3 },
+    { i: 'next-exam', x: 6, y: 0, w: 3, h: 3 },
+    { i: 'deadlines', x: 9, y: 0, w: 3, h: 3 },
+    { i: 'quick-stats', x: 0, y: 3, w: 4, h: 3 },
+    { i: 'todo-list', x: 4, y: 3, w: 4, h: 3 },
+    { i: 'pomodoro-timer', x: 8, y: 3, w: 4, h: 3 },
+    { i: 'weekly-summary', x: 0, y: 6, w: 4, h: 3 },
+    { i: 'streak-tracker', x: 4, y: 6, w: 2, h: 3 },
+    { i: 'motivation-quote', x: 6, y: 6, w: 2, h: 3 },
+    { i: 'notifications', x: 8, y: 6, w: 4, h: 3 },
+    { i: 'storage', x: 0, y: 9, w: 6, h: 3 },
+  ]);
 
-      {nextExam ? (
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">
-              {nextExam.subjectName}
-            </h3>
-            <span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
-              {daysUntilExam} days left
-            </span>
-          </div>
-          <div className="space-y-2 text-sm text-gray-600">
-            <p>
-              <strong>Date:</strong> {nextExam.examDate.toLocaleDateString()}
-            </p>
-            <p>
-              <strong>Time:</strong> {nextExam.startTime} - {nextExam.endTime}
-            </p>
-            <p>
-              <strong>Type:</strong> {nextExam.examType.toUpperCase()} Exam
-            </p>
-            {nextExam.room && (
-              <p>
-                <strong>Room:</strong> {nextExam.room}
-              </p>
-            )}
-            {nextExam.notes && (
-              <p>
-                <strong>Notes:</strong> {nextExam.notes}
-              </p>
-            )}
-          </div>
-          <div className="mt-4 flex space-x-2">
-            <button 
-              onClick={() => handleEditExam(nextExam)}
-              className="text-primary hover:text-orange-600 text-sm font-medium"
-            >
-              Edit
-            </button>
-            <button
-              onClick={() => handleDeleteExam(nextExam.id)}
-              className="text-red-600 hover:text-red-700 text-sm font-medium"
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="card">
-          <div className="text-center py-8">
-            <BookOpenIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No Upcoming Exams</h3>
-            <p className="text-gray-600 mb-4">You don't have any exams scheduled.</p>
-            <button
-              onClick={() => setShowExamModal(true)}
-              className="btn-primary flex items-center space-x-2 mx-auto"
-            >
-              <PlusIcon className="w-5 h-5" />
-              <span>Add Exam</span>
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  const [isEditMode, setIsEditMode] = useState(false);
+
+  const handleLayoutChange = (newLayout: any) => {
+    setWidgetLayout(newLayout);
+  };
 
   const renderSubjects = () => (
     <div className="space-y-6">
@@ -2988,8 +2961,6 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
     switch (currentPage) {
       case 'dashboard':
         return renderDashboard();
-      case 'next-exam':
-        return renderNextExam();
       case 'assignments':
         return renderAssignments();
       case 'exams':
