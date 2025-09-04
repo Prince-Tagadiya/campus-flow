@@ -696,7 +696,7 @@ const StudentDashboard: React.FC = () => {
       );
       setNextExam(next);
 
-      const days = Math.ceil(
+      const days = Math.floor(
         (next.examDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
       );
       setDaysUntilExam(days);
