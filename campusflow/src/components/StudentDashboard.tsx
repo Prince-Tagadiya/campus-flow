@@ -1071,6 +1071,37 @@ const StudentDashboard: React.FC = () => {
     return notifications.filter(n => !n.isRead).length;
   };
 
+  const handleDeleteAssignmentFile = async (assignmentId: string) => {
+    if (!currentUser?.id) return;
+    
+    if (window.confirm('Are you sure you want to delete this file? This action cannot be undone.')) {
+      try {
+        // Update assignment to remove file
+        await updateDoc(doc(db, 'assignments', assignmentId), {
+          pdfUrl: null,
+          fileSize: 0,
+        });
+        
+        // Update local state
+        setAssignments(assignments.map(a => 
+          a.id === assignmentId 
+            ? { ...a, pdfUrl: '', fileSize: 0 }
+            : a
+        ));
+        
+      } catch (error) {
+        console.error('Error deleting file:', error);
+        alert('Failed to delete file. Please try again.');
+      }
+    }
+  };
+
+  const getSortedAssignmentsBySize = () => {
+    return assignments
+      .filter(a => a.fileSize && a.fileSize > 0)
+      .sort((a, b) => (b.fileSize || 0) - (a.fileSize || 0));
+  };
+
   const handleImportExamData = async () => {
     if (!currentUser?.id) return;
     
@@ -2545,6 +2576,12 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                 {formatFileSize(storageInfo.limit * 1024 * 1024)}
               </span>
             </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">Total Files</span>
+              <span className="font-semibold">
+                {assignments.filter(a => a.fileSize && a.fileSize > 0).length}
+              </span>
+            </div>
           </div>
 
           <div className="mt-6">
@@ -2574,31 +2611,63 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
         </div>
 
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Storage by Assignment
-          </h3>
-          <div className="space-y-3">
-            {assignments.map((assignment) => (
-              <div
-                key={assignment.id}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-              >
-                <div>
-                  <p className="font-medium text-gray-900">
-                    {assignment.title}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    {assignment.subjectName}
-                  </p>
-                </div>
-                <span className="text-sm text-gray-600">
-                  {assignment.fileSize
-                    ? formatFileSize(assignment.fileSize * 1024 * 1024)
-                    : 'N/A'}
-                </span>
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Files by Size (Max to Low)
+            </h3>
+            <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+              {assignments.filter(a => a.fileSize && a.fileSize > 0).length} files
+            </span>
           </div>
+          
+          {assignments.filter(a => a.fileSize && a.fileSize > 0).length === 0 ? (
+            <div className="text-center py-8">
+              <CloudIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Files</h3>
+              <p className="text-gray-600">No PDF files uploaded yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {getSortedAssignmentsBySize().map((assignment) => (
+                <div
+                  key={assignment.id}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-2">
+                      <div className="flex-shrink-0">
+                        <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                          <span className="text-red-600 text-xs font-semibold">PDF</span>
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 truncate">
+                          {assignment.title}
+                        </p>
+                        <p className="text-sm text-gray-600 truncate">
+                          {assignment.subjectName} • {assignment.deadline.toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                                         <span className="text-sm font-semibold text-gray-700">
+                       {formatFileSize((assignment.fileSize || 0) * 1024 * 1024)}
+                     </span>
+                    <button
+                      onClick={() => handleDeleteAssignmentFile(assignment.id)}
+                      className="text-red-600 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors"
+                      title="Delete file"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
