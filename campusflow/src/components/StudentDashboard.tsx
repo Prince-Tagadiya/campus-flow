@@ -224,6 +224,20 @@ const StudentDashboard: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [customizeMode, setCustomizeMode] = useState(false);
+
+  // Custom notification and modal states
+  const [showNotification, setShowNotification] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState('');
+  const [notificationType, setNotificationType] = useState<'success' | 'error' | 'warning' | 'info'>('info');
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalData, setConfirmModalData] = useState<{
+    title: string;
+    message: string;
+    confirmText: string;
+    cancelText: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  } | null>(null);
   const [cards, setCards] = useState<DashboardCard[]>([
     /*
     🎯 NEW DASHBOARD LAYOUT - Row-Based Organization
@@ -991,19 +1005,31 @@ const StudentDashboard: React.FC = () => {
   const handleDeleteSubject = async (id: string) => {
     if (!currentUser?.id) return;
     
-    if (window.confirm('Are you sure you want to delete this subject? This will also remove all related assignments and exams.')) {
-      try {
-        // Delete the subject
-        await deleteDoc(doc(db, 'subjects', id));
-        
-        // Remove related assignments and exams
-        setAssignments(assignments.filter(a => a.subjectId !== id));
-        setExams(exams.filter(e => e.subjectId !== id));
-      } catch (error) {
-        console.error('Error deleting subject:', error);
-        alert('Failed to delete subject. Please try again.');
-      }
-    }
+    const subject = subjects.find(s => s.id === id);
+    if (!subject) return;
+    
+    showConfirmDialog(
+      'Delete Subject',
+      `Are you sure you want to delete "${subject.name}"? This will also remove all related assignments and exams.`,
+      async () => {
+        try {
+          // Delete the subject
+          await deleteDoc(doc(db, 'subjects', id));
+          
+          // Remove related assignments and exams
+          setAssignments(assignments.filter(a => a.subjectId !== id));
+          setExams(exams.filter(e => e.subjectId !== id));
+          
+          showCustomNotification('Subject deleted successfully!', 'success');
+        } catch (error) {
+          console.error('Error deleting subject:', error);
+          showCustomNotification('Failed to delete subject. Please try again.', 'error');
+        }
+      },
+      'danger',
+      'Delete Subject',
+      'Cancel'
+    );
   };
 
   const handleMarkNotificationAsRead = async (notificationId: string) => {
@@ -1020,26 +1046,40 @@ const StudentDashboard: React.FC = () => {
         n.id === notificationId ? { ...n, isRead: true } : n
       ));
       
+      showCustomNotification('Notification marked as read', 'success');
     } catch (error) {
       console.error('Error marking notification as read:', error);
-      alert('Failed to mark notification as read. Please try again.');
+      showCustomNotification('Failed to mark notification as read. Please try again.', 'error');
     }
   };
 
   const handleDeleteNotification = async (notificationId: string) => {
     if (!currentUser?.id) return;
     
-    try {
-      // Delete from Firebase
-      await deleteDoc(doc(db, 'notifications', notificationId));
-      
-      // Remove from local state
-      setNotifications(notifications.filter(n => n.id !== notificationId));
-      
-    } catch (error) {
-      console.error('Error deleting notification:', error);
-      alert('Failed to delete notification. Please try again.');
-    }
+    const notification = notifications.find(n => n.id === notificationId);
+    if (!notification) return;
+    
+    showConfirmDialog(
+      'Delete Notification',
+      `Are you sure you want to delete the notification "${notification.title}"?`,
+      async () => {
+        try {
+          // Delete from Firebase
+          await deleteDoc(doc(db, 'notifications', notificationId));
+          
+          // Remove from local state
+          setNotifications(notifications.filter(n => n.id !== notificationId));
+          
+          showCustomNotification('Notification deleted successfully!', 'success');
+        } catch (error) {
+          console.error('Error deleting notification:', error);
+          showCustomNotification('Failed to delete notification. Please try again.', 'error');
+        }
+      },
+      'warning',
+      'Delete',
+      'Cancel'
+    );
   };
 
   const handleMarkAllNotificationsAsRead = async () => {
@@ -1061,9 +1101,10 @@ const StudentDashboard: React.FC = () => {
       // Update local state
       setNotifications(notifications.map(n => ({ ...n, isRead: true })));
       
+      showCustomNotification('All notifications marked as read!', 'success');
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
-      alert('Failed to mark all notifications as read. Please try again.');
+      showCustomNotification('Failed to mark all notifications as read. Please try again.', 'error');
     }
   };
 
@@ -1071,29 +1112,84 @@ const StudentDashboard: React.FC = () => {
     return notifications.filter(n => !n.isRead).length;
   };
 
+  // Custom notification functions
+  const showCustomNotification = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
+    setNotificationMessage(message);
+    setNotificationType(type);
+    setShowNotification(true);
+    
+    // Auto hide after 4 seconds
+    setTimeout(() => {
+      setShowNotification(false);
+    }, 4000);
+  };
+
+  const showConfirmDialog = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    type: 'danger' | 'warning' | 'info' = 'warning',
+    confirmText: string = 'Confirm',
+    cancelText: string = 'Cancel'
+  ) => {
+    setConfirmModalData({
+      title,
+      message,
+      confirmText,
+      cancelText,
+      onConfirm,
+      type,
+    });
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmModalConfirm = () => {
+    if (confirmModalData) {
+      confirmModalData.onConfirm();
+      setShowConfirmModal(false);
+      setConfirmModalData(null);
+    }
+  };
+
+  const handleConfirmModalCancel = () => {
+    setShowConfirmModal(false);
+    setConfirmModalData(null);
+  };
+
   const handleDeleteAssignmentFile = async (assignmentId: string) => {
     if (!currentUser?.id) return;
     
-    if (window.confirm('Are you sure you want to delete this file? This action cannot be undone.')) {
-      try {
-        // Update assignment to remove file
-        await updateDoc(doc(db, 'assignments', assignmentId), {
-          pdfUrl: null,
-          fileSize: 0,
-        });
-        
-        // Update local state
-        setAssignments(assignments.map(a => 
-          a.id === assignmentId 
-            ? { ...a, pdfUrl: '', fileSize: 0 }
-            : a
-        ));
-        
-      } catch (error) {
-        console.error('Error deleting file:', error);
-        alert('Failed to delete file. Please try again.');
-      }
-    }
+    const assignment = assignments.find(a => a.id === assignmentId);
+    if (!assignment) return;
+    
+    showConfirmDialog(
+      'Delete File',
+      `Are you sure you want to delete the PDF file for "${assignment.title}"? This action cannot be undone.`,
+      async () => {
+        try {
+          // Update assignment to remove file
+          await updateDoc(doc(db, 'assignments', assignmentId), {
+            pdfUrl: null,
+            fileSize: 0,
+          });
+          
+          // Update local state
+          setAssignments(assignments.map(a => 
+            a.id === assignmentId 
+              ? { ...a, pdfUrl: '', fileSize: 0 }
+              : a
+          ));
+          
+          showCustomNotification('File deleted successfully!', 'success');
+        } catch (error) {
+          console.error('Error deleting file:', error);
+          showCustomNotification('Failed to delete file. Please try again.', 'error');
+        }
+      },
+      'danger',
+      'Delete File',
+      'Cancel'
+    );
   };
 
   const getSortedAssignmentsBySize = () => {
@@ -3974,6 +4070,123 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Notification */}
+      {showNotification && (
+        <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-right duration-300">
+          <div className={`rounded-lg shadow-lg p-4 max-w-sm ${
+            notificationType === 'success' ? 'bg-green-500 text-white' :
+            notificationType === 'error' ? 'bg-red-500 text-white' :
+            notificationType === 'warning' ? 'bg-yellow-500 text-white' :
+            'bg-blue-500 text-white'
+          }`}>
+            <div className="flex items-center space-x-3">
+              <div className="flex-shrink-0">
+                {notificationType === 'success' && (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                )}
+                {notificationType === 'error' && (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                )}
+                {notificationType === 'warning' && (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                )}
+                {notificationType === 'info' && (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium">{notificationMessage}</p>
+              </div>
+              <button
+                onClick={() => setShowNotification(false)}
+                className="flex-shrink-0 text-white hover:text-gray-200"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirm Modal */}
+      {showConfirmModal && confirmModalData && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className={`px-4 pt-5 pb-4 sm:p-6 sm:pb-4 ${
+                confirmModalData.type === 'danger' ? 'border-l-4 border-red-500' :
+                confirmModalData.type === 'warning' ? 'border-l-4 border-yellow-500' :
+                'border-l-4 border-blue-500'
+              }`}>
+                <div className="sm:flex sm:items-start">
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10">
+                    {confirmModalData.type === 'danger' && (
+                      <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                    )}
+                    {confirmModalData.type === 'warning' && (
+                      <svg className="h-6 w-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                    )}
+                    {confirmModalData.type === 'info' && (
+                      <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900">
+                      {confirmModalData.title}
+                    </h3>
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-500">
+                        {confirmModalData.message}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  onClick={handleConfirmModalConfirm}
+                  className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm ${
+                    confirmModalData.type === 'danger' ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' :
+                    confirmModalData.type === 'warning' ? 'bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-500' :
+                    'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
+                  }`}
+                >
+                  {confirmModalData.confirmText}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmModalCancel}
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                >
+                  {confirmModalData.cancelText}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
