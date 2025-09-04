@@ -2,9 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { doc, setDoc, collection, addDoc, updateDoc, deleteDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { Responsive, WidthProvider } from 'react-grid-layout';
-import 'react-grid-layout/css/styles.css';
-import 'react-grid-layout/css/styles.css';
 import {
   ClockIcon,
   UserIcon,
@@ -336,23 +333,13 @@ const StudentDashboard: React.FC = () => {
     
     // ⚡ Row 4 – Productivity Zone
     {
-      id: 'todo-list',
-      type: 'todo-list' as any,
-      title: 'Today\'s To-Do',
-      description: 'Tasks/reminders added by student',
-      icon: 'CheckIcon',
-      enabled: true,
-      order: 8,
-      size: 'm',
-    },
-    {
       id: 'pomodoro-timer',
       type: 'pomodoro-timer' as any,
       title: 'Pomodoro Timer',
       description: 'Built-in focus timer with session logs',
       icon: 'ClockIcon',
       enabled: true,
-      order: 9,
+      order: 8,
       size: 'm',
     },
     {
@@ -362,7 +349,7 @@ const StudentDashboard: React.FC = () => {
       description: 'Auto-summary of completed work',
       icon: 'ChartBarIcon',
       enabled: true,
-      order: 10,
+      order: 9,
       size: 'm',
     },
     
@@ -374,7 +361,7 @@ const StudentDashboard: React.FC = () => {
       description: 'Assignment completion streaks',
       icon: 'ChartBarIcon',
       enabled: true,
-      order: 11,
+      order: 10,
       size: 's',
     },
     {
@@ -384,7 +371,7 @@ const StudentDashboard: React.FC = () => {
       description: 'Student-focused motivational quotes',
       icon: 'BookOpenIcon',
       enabled: true,
-      order: 12,
+      order: 11,
       size: 's',
     },
     
@@ -396,7 +383,7 @@ const StudentDashboard: React.FC = () => {
       description: 'Recent notifications',
       icon: 'BellIcon',
       enabled: true,
-      order: 13,
+      order: 12,
       size: 'm',
     },
     {
@@ -406,7 +393,7 @@ const StudentDashboard: React.FC = () => {
       description: 'Usage of storage',
       icon: 'CloudIcon',
       enabled: true,
-      order: 14,
+      order: 13,
       size: 'm',
     },
   ]);
@@ -1269,7 +1256,6 @@ const StudentDashboard: React.FC = () => {
   };
 
   const renderDashboard = () => {
-    const ResponsiveGridLayout = WidthProvider(Responsive);
     const ordered = [...cards].sort((a, b) => a.order - b.order).filter((c) => c.enabled);
 
     return (
@@ -1313,44 +1299,22 @@ const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Header with Edit Mode Toggle */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
+        {/* Header */}
+        <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900">
               Welcome back, {currentUser?.name?.split(' ')[0]}! 👋
             </h1>
-            <p className="text-gray-600">Here is your dashboard overview.</p>
-          </div>
-          <button
-            onClick={() => setIsEditMode(!isEditMode)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              isEditMode 
-                ? 'bg-red-600 hover:bg-red-700 text-white' 
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
-            }`}
-          >
-            {isEditMode ? 'Save Layout' : 'Rearrange Widgets'}
-          </button>
+          <p className="text-gray-600">Here is your dashboard overview.</p>
         </div>
 
-        {/* Draggable Grid Layout */}
-        <ResponsiveGridLayout
-          className="layout"
-          layouts={{ lg: widgetLayout }}
-          breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-          cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
-          rowHeight={100}
-          isDraggable={isEditMode}
-          isResizable={isEditMode}
-          onLayoutChange={handleLayoutChange}
-          margin={[16, 16]}
-        >
-          {ordered.map((c) => (
-            <div key={c.id} className="overflow-hidden">
-              {renderCardById(c)}
-            </div>
-          ))}
-        </ResponsiveGridLayout>
+        {/* Simple CSS grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 auto-rows-[minmax(260px,auto)]">
+            {ordered.map((c) => (
+            <div key={c.id} className={`${getCardSpanClass(c.size)} ${getCardHeightClass(c.size)} overflow-hidden`}>
+                {renderCardById(c)}
+              </div>
+            ))}
+          </div>
       </div>
     );
   };
@@ -1941,88 +1905,6 @@ const StudentDashboard: React.FC = () => {
   );
     }
 
-    if (c.id === 'todo-list') {
-      return (
-        <div className="h-full flex flex-col p-6 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg shadow-lg">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-semibold text-gray-900 flex items-center">
-              <CheckIcon className="w-6 h-6 mr-2 text-green-600" />
-              Today's To-Do
-            </h3>
-            <div className="text-sm text-gray-600">
-              {todos.filter(t => t.completed).length}/{todos.length}
-            </div>
-          </div>
-          
-          {/* Progress bar */}
-          <div className="mb-4">
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-gradient-to-r from-green-400 to-emerald-500 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${todos.length > 0 ? (todos.filter(t => t.completed).length / todos.length) * 100 : 0}%` }}
-              ></div>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              {Math.round(todos.length > 0 ? (todos.filter(t => t.completed).length / todos.length) * 100 : 0)}% complete
-            </p>
-          </div>
-
-          <div className="flex-1 space-y-3 overflow-y-auto">
-            {todos.map((todo, index) => (
-              <div 
-                key={todo.id} 
-                className={`flex items-center space-x-3 p-3 rounded-lg transition-all duration-300 hover:shadow-md ${
-                  todo.completed 
-                    ? 'bg-green-100 border border-green-200' 
-                    : 'bg-white border border-gray-200 hover:border-green-300'
-                }`}
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                <input
-                  type="checkbox"
-                  checked={todo.completed}
-                  onChange={() => {
-                    setTodos(todos.map(t => 
-                      t.id === todo.id ? { ...t, completed: !t.completed } : t
-                    ));
-                  }}
-                  className="w-5 h-5 text-green-600 rounded focus:ring-green-500"
-                />
-                <div className="flex-1">
-                  <p className={`text-sm font-medium transition-all duration-300 ${
-                    todo.completed ? 'line-through text-gray-500' : 'text-gray-900'
-                  }`}>
-                    {todo.title}
-                  </p>
-                  {todo.description && (
-                    <p className="text-xs text-gray-500 mt-1">{todo.description}</p>
-                  )}
-                </div>
-                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                  todo.priority === 'high' ? 'bg-red-100 text-red-800' :
-                  todo.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-green-100 text-green-800'
-                }`}>
-                  {todo.priority}
-                </span>
-              </div>
-            ))}
-            
-            {todos.length === 0 && (
-              <div className="text-center py-8">
-                <CheckIcon className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                <p className="text-gray-500 text-sm">No tasks yet. Add one below!</p>
-              </div>
-            )}
-          </div>
-          
-          <button className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-3 px-4 rounded-lg text-sm font-medium transition-all duration-300 mt-4 shadow-md hover:shadow-lg">
-            + Add Task
-          </button>
-        </div>
-      );
-    }
-
     if (c.id === 'streak-tracker') {
       const assignmentStreak = streaks.find(s => s.type === 'assignments');
       return (
@@ -2478,27 +2360,6 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
       </div>
     </div>
   );
-
-  // Widget layout state
-  const [widgetLayout, setWidgetLayout] = useState([
-    { i: 'welcome', x: 0, y: 0, w: 6, h: 3 },
-    { i: 'next-exam', x: 6, y: 0, w: 3, h: 3 },
-    { i: 'deadlines', x: 9, y: 0, w: 3, h: 3 },
-    { i: 'quick-stats', x: 0, y: 3, w: 4, h: 3 },
-    { i: 'todo-list', x: 4, y: 3, w: 4, h: 3 },
-    { i: 'pomodoro-timer', x: 8, y: 3, w: 4, h: 3 },
-    { i: 'weekly-summary', x: 0, y: 6, w: 4, h: 3 },
-    { i: 'streak-tracker', x: 4, y: 6, w: 2, h: 3 },
-    { i: 'motivation-quote', x: 6, y: 6, w: 2, h: 3 },
-    { i: 'notifications', x: 8, y: 6, w: 4, h: 3 },
-    { i: 'storage', x: 0, y: 9, w: 6, h: 3 },
-  ]);
-
-  const [isEditMode, setIsEditMode] = useState(false);
-
-  const handleLayoutChange = (newLayout: any) => {
-    setWidgetLayout(newLayout);
-  };
 
   const renderSubjects = () => (
     <div className="space-y-6">
