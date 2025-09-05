@@ -252,6 +252,7 @@ const StudentDashboard: React.FC = () => {
   const [showEditExamModal, setShowEditExamModal] = useState(false);
   const [showSubjectsModal, setShowSubjectsModal] = useState(false);
   const [editingExam, setEditingExam] = useState<Exam | null>(null);
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [customizeMode, setCustomizeMode] = useState(false);
@@ -582,6 +583,8 @@ const StudentDashboard: React.FC = () => {
     { id: '1', text: 'Success is not final, failure is not fatal: it is the courage to continue that counts.', author: 'Winston Churchill', category: 'motivation', date: new Date() },
     { id: '2', text: 'The future belongs to those who believe in the beauty of their dreams.', author: 'Eleanor Roosevelt', category: 'success', date: new Date() },
   ]);
+  const [currentQuote, setCurrentQuote] = useState<MotivationQuote | null>(null);
+  const [isLoadingQuote, setIsLoadingQuote] = useState(false);
 
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([
     { id: '1', studentId: '1', type: 'study', title: 'Revise Calculus', description: '2 days left for Mathematics exam', priority: 'high', relatedSubjectId: '1', relatedSubjectName: 'Mathematics', createdAt: new Date(), isRead: false },
@@ -620,6 +623,36 @@ const StudentDashboard: React.FC = () => {
   const [showStreakAnimation, setShowStreakAnimation] = useState(false);
   const [streakIncrement, setStreakIncrement] = useState(0);
   const [lastLoginDate, setLastLoginDate] = useState<string>('');
+  const [showMotivationAnimation, setShowMotivationAnimation] = useState(false);
+
+  // Fetch motivational quote from API
+  const fetchMotivationalQuote = async () => {
+    setIsLoadingQuote(true);
+    try {
+      // Using quotable.io API for inspirational quotes
+      const response = await fetch('https://api.quotable.io/random?tags=motivational,inspirational,success');
+      const data = await response.json();
+      
+      const newQuote: MotivationQuote = {
+        id: Date.now().toString(),
+        text: data.content,
+        author: data.author,
+        category: 'motivation',
+        date: new Date()
+      };
+      
+      setCurrentQuote(newQuote);
+      return newQuote;
+    } catch (error) {
+      console.error('Error fetching motivational quote:', error);
+      // Fallback to local quotes if API fails
+      const fallbackQuote = motivationQuotes[Math.floor(Math.random() * motivationQuotes.length)];
+      setCurrentQuote(fallbackQuote);
+      return fallbackQuote;
+    } finally {
+      setIsLoadingQuote(false);
+    }
+  };
 
   // Notification functions
   const requestNotificationPermission = async () => {
@@ -843,6 +876,11 @@ const StudentDashboard: React.FC = () => {
   // Check streak on component mount
   useEffect(() => {
     checkAndUpdateStreak();
+  }, []);
+
+  // Fetch initial motivational quote
+  useEffect(() => {
+    fetchMotivationalQuote();
   }, []);
 
   // Cleanup Pomodoro timer on unmount
@@ -1202,7 +1240,16 @@ const StudentDashboard: React.FC = () => {
   };
 
   const handleEditAssignment = (assignment: Assignment) => {
+    console.log('handleEditAssignment called with:', assignment);
     setEditingAssignment(assignment);
+    // Pre-fill the form with existing assignment data
+    setAssignmentForm({
+      title: assignment.title,
+      subjectId: assignment.subjectId,
+      submissionType: assignment.submissionType,
+      deadline: assignment.deadline.toISOString().split('T')[0], // Format date for input
+      pdfFile: null, // Don't pre-fill file, user can upload new one
+    });
     setShowUploadModal(true);
   };
 
@@ -1226,10 +1273,60 @@ const StudentDashboard: React.FC = () => {
       };
       
       setAssignments([...assignments, newAssignmentWithId]);
-    setShowUploadModal(false);
+      setShowUploadModal(false);
+      setEditingAssignment(null);
+      setAssignmentForm({
+        title: '',
+        subjectId: '',
+        submissionType: 'assignment',
+        deadline: '',
+        pdfFile: null,
+      });
     } catch (error) {
       console.error('Error adding assignment:', error);
       alert('Failed to add assignment. Please try again.');
+    }
+  };
+
+  const handleUpdateAssignment = async (
+    assignmentId: string,
+    updatedAssignment: Omit<Assignment, 'id' | 'studentId' | 'createdAt'>
+  ) => {
+    if (!currentUser?.id) return;
+    
+    try {
+      // Find the existing assignment to preserve its original creation date
+      const existingAssignment = assignments.find(a => a.id === assignmentId);
+      if (!existingAssignment) {
+        alert('Assignment not found. Please try again.');
+        return;
+      }
+      const assignmentToUpdate = {
+        ...updatedAssignment,
+        studentId: currentUser.id,
+        createdAt: existingAssignment.createdAt, // Preserve original creation date
+      };
+      
+      await updateDoc(doc(db, 'assignments', assignmentId), assignmentToUpdate);
+      
+      setAssignments(prevAssignments => 
+        prevAssignments.map(a => 
+          a.id === assignmentId ? { ...assignmentToUpdate, id: assignmentId } : a
+        )
+      );
+      setShowUploadModal(false);
+      setEditingAssignment(null);
+      setAssignmentForm({
+        title: '',
+        subjectId: '',
+        submissionType: 'assignment',
+        deadline: '',
+        pdfFile: null,
+      });
+      showCustomNotificationMessage('Assignment updated successfully!', 'success');
+    } catch (error) {
+      console.error('Error updating assignment:', error);
+      alert('Failed to update assignment. Please try again.');
     }
   };
 
@@ -1284,6 +1381,26 @@ const StudentDashboard: React.FC = () => {
     } catch (error) {
       console.error('Error adding subject:', error);
       alert('Failed to add subject. Please try again.');
+    }
+  };
+
+  const handleEditSubject = async (id: string, name: string, code: string) => {
+    if (!currentUser?.id) return;
+    
+    try {
+      const subjectToUpdate = {
+        name,
+        code,
+        studentId: currentUser.id,
+        createdAt: subjects.find(s => s.id === id)?.createdAt || new Date(),
+      };
+      
+      await updateDoc(doc(db, 'subjects', id), subjectToUpdate);
+      setSubjects(subjects.map(s => s.id === id ? { ...subjectToUpdate, id } : s));
+      showCustomNotificationMessage('Subject updated successfully!', 'success');
+    } catch (error) {
+      console.error('Error updating subject:', error);
+      alert('Failed to update subject. Please try again.');
     }
   };
 
@@ -1915,7 +2032,7 @@ const StudentDashboard: React.FC = () => {
                     <BookOpen className="w-5 h-5 mr-2 text-blue-500" />
                     Next Exam
                   </h2>
-                  <div className="flex-1 flex items-center justify-center">
+                  <div className="flex-1 overflow-y-auto">
                     {(() => {
                       // Find the next upcoming exam
                       const now = new Date();
@@ -1925,25 +2042,22 @@ const StudentDashboard: React.FC = () => {
                         : null;
                       
                       return nextExam ? (
-                        <div className="text-center w-full space-y-3">
+                        <div className="text-center w-full space-y-3 py-2">
                           {/* Days Left Circle */}
                           <div className="relative">
-                            <div className="w-20 h-20 mx-auto bg-gradient-to-br from-blue-100 to-blue-200 rounded-full flex items-center justify-center shadow-lg border-2 border-blue-300">
+                            <div className="w-16 h-16 mx-auto bg-gradient-to-br from-blue-100 to-blue-200 rounded-full flex items-center justify-center shadow-lg border-2 border-blue-300">
                               <div className="text-center">
-                                <div className="text-xl font-bold text-blue-700">
+                                <div className="text-lg font-bold text-blue-700">
                                   {Math.ceil((nextExam.examDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))}
                                 </div>
                                 <div className="text-xs text-blue-600 font-medium">days</div>
                               </div>
                             </div>
-                            <div className="absolute -top-1 -right-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center shadow-md">
-                              <span className="text-white text-xs">📚</span>
-                            </div>
                           </div>
                           
                           {/* Exam Details */}
-                          <div className="bg-white rounded-lg p-3 shadow-md border border-blue-200">
-                            <p className="font-semibold text-gray-900 text-sm mb-1 leading-tight" title={nextExam.subjectName}>
+                          <div className="bg-white rounded-lg p-2 shadow-md border border-blue-200">
+                            <p className="font-semibold text-gray-900 text-xs mb-1 leading-tight break-words" title={nextExam.subjectName}>
                               {nextExam.subjectName}
                             </p>
                             <p className="text-xs text-gray-600 mb-1 font-medium">
@@ -1961,9 +2075,9 @@ const StudentDashboard: React.FC = () => {
                           </div>
                         </div>
                       ) : (
-                        <div className="text-center">
-                          <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-3">
-                            <span className="text-2xl text-gray-400">📚</span>
+                        <div className="text-center py-4">
+                          <div className="w-12 h-12 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                            <span className="text-xl text-gray-400">📚</span>
                           </div>
                           <p className="text-gray-500 text-sm">No upcoming exams</p>
                           <p className="text-gray-400 text-xs mt-1">You're all caught up!</p>
@@ -2013,32 +2127,40 @@ const StudentDashboard: React.FC = () => {
             <div className="grid grid-cols-1 gap-6 mb-6">
               {/* Daily Motivation */}
               <div className="col-span-1">
-                <div className="bg-gradient-to-br from-purple-500 to-pink-500 text-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 h-64 flex flex-col">
+                <div className="bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-200 text-gray-800 rounded-2xl shadow-lg p-6 hover:shadow-xl hover:border-orange-300 transition-all duration-300 h-64 flex flex-col">
                   <h2 className="text-lg font-bold mb-4 flex items-center justify-between">
                     <div className="flex items-center">
                       <span className="mr-2">💪</span>
                       Daily Motivation
                     </div>
                     <button 
-                      onClick={() => {
-                        // Refresh motivation quote
-                        const randomIndex = Math.floor(Math.random() * motivationQuotes.length);
-                        const newQuotes = [...motivationQuotes];
-                        [newQuotes[0], newQuotes[randomIndex]] = [newQuotes[randomIndex], newQuotes[0]];
-                        setMotivationQuotes(newQuotes);
+                      onClick={async () => {
+                        // Trigger animation
+                        setShowMotivationAnimation(true);
+                        
+                        // Fetch new motivational quote from API
+                        await fetchMotivationalQuote();
+                        
+                        // Reset animation after animation completes
+                        setTimeout(() => {
+                          setShowMotivationAnimation(false);
+                        }, 800);
                       }}
-                      className="text-xs text-purple-200 hover:text-white underline"
+                      className="text-xs text-orange-600 hover:text-orange-700 underline disabled:opacity-50"
+                      disabled={isLoadingQuote}
                     >
-                      refresh
+                      {isLoadingQuote ? 'loading...' : 'refresh'}
                     </button>
                   </h2>
                   <div className="flex-1 flex flex-col justify-center items-center text-center">
-                    <p className="text-lg font-medium mb-4 leading-relaxed">
-                      "{motivationQuotes[0]?.text}"
-                    </p>
-                    <p className="text-sm text-purple-100">
-                      - {motivationQuotes[0]?.author}
-                    </p>
+                    <div className={`transition-all duration-500 ${showMotivationAnimation ? 'animate-fade-in' : ''}`}>
+                      <p className="text-lg font-medium mb-4 leading-relaxed text-gray-700">
+                        "{currentQuote?.text || motivationQuotes[0]?.text}"
+                      </p>
+                      <p className="text-sm text-orange-600 font-medium">
+                        - {currentQuote?.author || motivationQuotes[0]?.author}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2100,12 +2222,15 @@ const StudentDashboard: React.FC = () => {
                           <div key={exam.id} className="space-y-2">
                             {gap && (
                               <div className="text-center">
-                                <div className="inline-flex items-center px-2 py-1 bg-blue-100 rounded-full">
-                                  <span className="text-xs text-blue-600 font-medium">{gap.label}</span>
+                                <div className="inline-flex items-center px-2 py-1 bg-orange-200 rounded-full">
+                                  <span className="text-xs text-orange-700 font-medium">{gap.label}</span>
                                 </div>
                               </div>
                             )}
-                            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 hover:shadow-md transition-all duration-300">
+                            <div 
+                              className="p-3 bg-orange-50 rounded-lg border border-orange-200 hover:shadow-md hover:border-orange-300 transition-all duration-300 cursor-pointer"
+                              onClick={() => setCurrentPage('exams')}
+                            >
                               <div className="flex items-center justify-between">
                                 <div className="flex-1">
                                   <p className="font-semibold text-gray-900 text-sm">{exam.subjectName}</p>
@@ -2117,13 +2242,13 @@ const StudentDashboard: React.FC = () => {
                                     })}
                                   </p>
                                   <div className="flex items-center space-x-1">
-                                    <span className="text-xs text-blue-600">⏰</span>
+                                    <span className="text-xs text-orange-600">⏰</span>
                                     <span className="text-xs text-gray-500">{exam.startTime} - {exam.endTime}</span>
                                   </div>
                                 </div>
                                 <div className="text-right">
-                                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                                    <span className="text-sm font-bold text-blue-600">{daysLeft}</span>
+                                  <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                                    <span className="text-sm font-bold text-orange-600">{daysLeft}</span>
                                   </div>
                                   <p className="text-xs text-gray-500 mt-1">days</p>
                                 </div>
@@ -2342,7 +2467,7 @@ const StudentDashboard: React.FC = () => {
                   </h2>
                   <div className="flex-1 flex flex-col justify-center items-center">
                     <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center mb-4">
-                      <span className="text-2xl font-bold text-orange-600">{storageInfo.percentage}%</span>
+                      <span className="text-2xl font-bold text-orange-600">{storageInfo.percentage.toFixed(1)}%</span>
                     </div>
                     <p className="text-sm text-gray-600 mb-2 text-center">
                       {formatFileSize(storageInfo.used * 1024 * 1024)} / {formatFileSize(storageInfo.limit * 1024 * 1024)}
@@ -2493,43 +2618,42 @@ const StudentDashboard: React.FC = () => {
 
     if (c.id === 'next-exam' && nextExam) {
       return (
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-6 rounded-xl h-full flex flex-col justify-center shadow-lg">
-          <div className="text-center mb-6">
-            <h2 className="text-xl font-bold mb-4 flex items-center justify-center">
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-6 rounded-xl h-full flex flex-col shadow-lg">
+          <div className="text-center mb-4">
+            <h2 className="text-lg font-bold mb-3 flex items-center justify-center">
               <span className="mr-2">📚</span>
               Next Exam
             </h2>
             
             {/* Days Left Circle */}
-            <div className="relative mb-4">
-              <div className="w-20 h-20 mx-auto bg-white bg-opacity-20 rounded-full flex items-center justify-center shadow-lg border-2 border-white border-opacity-30">
+            <div className="relative mb-3">
+              <div className="w-16 h-16 mx-auto bg-white bg-opacity-20 rounded-full flex items-center justify-center shadow-lg border-2 border-white border-opacity-30">
                 <div className="text-center">
-                  <div className="text-2xl font-bold">{daysUntilExam}</div>
+                  <div className="text-xl font-bold">{daysUntilExam}</div>
                   <div className="text-xs font-medium">days</div>
                 </div>
-              </div>
-              <div className="absolute -top-1 -right-1 w-6 h-6 bg-white bg-opacity-90 rounded-full flex items-center justify-center">
-                <span className="text-blue-600 text-xs">📚</span>
               </div>
             </div>
           </div>
           
-          {/* Exam Details */}
-          <div className="bg-white bg-opacity-10 rounded-lg p-4 backdrop-blur-sm">
-            <p className="font-bold text-lg mb-2 leading-tight" title={nextExam.subjectName}>
-              {nextExam.subjectName}
-            </p>
-            <p className="text-blue-100 text-sm mb-2 font-medium">
-              {nextExam.examDate.toLocaleDateString('en-US', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })}
-            </p>
-            <div className="flex items-center justify-center space-x-2">
-              <span className="text-blue-200 text-sm">⏰</span>
-              <span className="text-blue-100 text-sm font-medium">{nextExam.startTime} - {nextExam.endTime}</span>
+          {/* Exam Details - Scrollable */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="bg-white bg-opacity-10 rounded-lg p-3 backdrop-blur-sm">
+              <p className="font-bold text-sm mb-2 leading-tight break-words" title={nextExam.subjectName}>
+                {nextExam.subjectName}
+              </p>
+              <p className="text-blue-100 text-xs mb-2 font-medium">
+                {nextExam.examDate.toLocaleDateString('en-US', { 
+                  weekday: 'short', 
+                  year: 'numeric', 
+                  month: 'short', 
+                  day: 'numeric' 
+                })}
+              </p>
+              <div className="flex items-center justify-center space-x-1">
+                <span className="text-blue-200 text-xs">⏰</span>
+                <span className="text-blue-100 text-xs font-medium">{nextExam.startTime} - {nextExam.endTime}</span>
+              </div>
             </div>
           </div>
           
@@ -2905,9 +3029,9 @@ const StudentDashboard: React.FC = () => {
   };
 
   return (
-        <div className="h-full flex flex-col p-6 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg shadow-lg">
+        <div className="h-full flex flex-col p-6 bg-white rounded-lg shadow-lg">
           <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
-            <BookOpenIcon className="w-6 h-6 mr-2 text-purple-600" />
+            <BookOpenIcon className="w-6 h-6 mr-2 text-orange-600" />
             Upcoming Exams
           </h3>
           <div className="flex-1 space-y-4 overflow-y-auto max-h-80 pr-2">
@@ -2919,12 +3043,15 @@ const StudentDashboard: React.FC = () => {
                 <div key={exam.id} className="space-y-2">
                   {gap && (
                     <div className="text-center">
-                      <div className="inline-flex items-center px-3 py-1 bg-gray-100 rounded-full">
-                        <span className="text-xs text-gray-600">{gap.label}</span>
-        </div>
+                      <div className="inline-flex items-center px-3 py-1 bg-orange-200 rounded-full">
+                        <span className="text-xs text-orange-700">{gap.label}</span>
+                      </div>
                     </div>
                   )}
-                  <div className="p-4 bg-white rounded-lg border border-purple-100 hover:shadow-md transition-all duration-300">
+                  <div 
+                    className="p-4 bg-orange-50 rounded-lg border border-orange-200 hover:shadow-md hover:border-orange-300 transition-all duration-300 cursor-pointer"
+                    onClick={() => setCurrentPage('exams')}
+                  >
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <p className="font-semibold text-gray-900">{exam.examType.toUpperCase()} Exam</p>
@@ -2932,7 +3059,7 @@ const StudentDashboard: React.FC = () => {
                         <p className="text-xs text-gray-500">{exam.examDate.toLocaleDateString()}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-2xl font-bold text-purple-600">{daysLeft}</p>
+                        <p className="text-2xl font-bold text-orange-600">{daysLeft}</p>
                         <p className="text-xs text-gray-500">days left</p>
                       </div>
                     </div>
@@ -3359,8 +3486,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
 
   const renderAssignments = () => (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Assignments</h1>
+      <div className="flex items-center justify-end">
         <div className="flex space-x-3">
           <button
             onClick={() => setShowUploadModal(true)}
@@ -3372,77 +3498,153 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
         </div>
       </div>
 
-      {/* Filters and Sorting */}
-      <div className="space-y-4">
-        {/* Priority Filter */}
-        <div className="flex flex-wrap gap-2">
-          <span className="text-sm font-medium text-gray-700 self-center">Priority:</span>
-          {([['all','All'], ['high','High Priority'], ['medium','Medium Priority'], ['low','Low Priority']] as const).map(([key,label]) => (
-            <button
-              key={key}
-              onClick={() => setAssignmentFilter(key)}
-              className={`px-3 py-1 rounded-lg text-sm font-medium ${assignmentFilter === key ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Subject Filter */}
-        <div className="flex flex-wrap gap-2">
-          <span className="text-sm font-medium text-gray-700 self-center">Subject:</span>
+      {/* Enhanced Filters and Sorting */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+            <svg className="w-5 h-5 mr-2 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            Filters & Sorting
+          </h2>
           <button
-            onClick={() => setSubjectFilter('all')}
-            className={`px-3 py-1 rounded-lg text-sm font-medium ${subjectFilter === 'all' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            onClick={() => {
+              setAssignmentFilter('all');
+              setSubjectFilter('all');
+              setStatusFilter('all');
+              setSortBy('deadline');
+              setSortOrder('asc');
+            }}
+            className="text-sm text-gray-500 hover:text-primary transition-colors duration-200"
           >
-            All Subjects
+            Clear All
           </button>
-          {subjects.map((subject) => (
-            <button
-              key={subject.id}
-              onClick={() => setSubjectFilter(subject.id)}
-              className={`px-3 py-1 rounded-lg text-sm font-medium ${subjectFilter === subject.id ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-            >
-              {subject.name}
-            </button>
-          ))}
         </div>
 
-        {/* Status Filter */}
-        <div className="flex flex-wrap gap-2">
-          <span className="text-sm font-medium text-gray-700 self-center">Status:</span>
-          {([['all','All'], ['pending','Pending'], ['completed','Completed']] as const).map(([key,label]) => (
-            <button
-              key={key}
-              onClick={() => setStatusFilter(key)}
-              className={`px-3 py-1 rounded-lg text-sm font-medium ${statusFilter === key ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
+          {/* Priority Filter */}
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-gray-700">
+              Priority
+            </label>
+            <div className="space-y-2">
+              {([['all','All'], ['high','High Priority'], ['medium','Medium Priority'], ['low','Low Priority']] as const).map(([key,label]) => (
+                <button
+                  key={key}
+                  onClick={() => setAssignmentFilter(key)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    assignmentFilter === key 
+                      ? 'bg-gradient-to-r from-primary to-orange-500 text-white shadow-md' 
+                      : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    {key !== 'all' && (
+                      <div className={`w-2 h-2 rounded-full ${
+                        key === 'high' ? 'bg-red-500' : 
+                        key === 'medium' ? 'bg-yellow-500' : 
+                        'bg-green-500'
+                      }`} />
+                    )}
+                    <span>{label}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
 
-        {/* Sort Options */}
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-sm font-medium text-gray-700">Sort by:</span>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="px-3 py-1 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-primary focus:border-transparent"
-          >
-            <option value="deadline">Deadline</option>
-            <option value="subject">Subject</option>
-            <option value="priority">Priority</option>
-            <option value="status">Status</option>
-            <option value="title">Title</option>
-          </select>
-          <button
-            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            className="px-3 py-1 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 text-sm font-medium flex items-center space-x-1"
-          >
-            <span>{sortOrder === 'asc' ? '↑' : '↓'}</span>
-            <span>{sortOrder === 'asc' ? 'Ascending' : 'Descending'}</span>
-          </button>
+          {/* Subject Filter */}
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-gray-700">
+              Subject
+            </label>
+            <div className="space-y-2 max-h-32 overflow-y-auto">
+              <button
+                onClick={() => setSubjectFilter('all')}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  subjectFilter === 'all' 
+                    ? 'bg-gradient-to-r from-primary to-orange-500 text-white shadow-md' 
+                    : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
+                }`}
+              >
+                All Subjects
+              </button>
+              {subjects.map((subject) => (
+                <button
+                  key={subject.id}
+                  onClick={() => setSubjectFilter(subject.id)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    subjectFilter === subject.id 
+                      ? 'bg-gradient-to-r from-primary to-orange-500 text-white shadow-md' 
+                      : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                    <span className="truncate">{subject.name}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Status Filter */}
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-gray-700">
+              Status
+            </label>
+            <div className="space-y-2">
+              {([['all','All'], ['pending','Pending'], ['completed','Completed']] as const).map(([key,label]) => (
+                <button
+                  key={key}
+                  onClick={() => setStatusFilter(key)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    statusFilter === key 
+                      ? 'bg-gradient-to-r from-primary to-orange-500 text-white shadow-md' 
+                      : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    {key !== 'all' && (
+                      <div className={`w-2 h-2 rounded-full ${
+                        key === 'pending' ? 'bg-orange-500' : 'bg-green-500'
+                      }`} />
+                    )}
+                    <span>{label}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Sort Options */}
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-gray-700">
+              Sort Options
+            </label>
+            <div className="space-y-3">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-primary focus:border-transparent bg-white shadow-sm"
+              >
+                <option value="deadline">Deadline</option>
+                <option value="subject">Subject</option>
+                <option value="priority">Priority</option>
+                <option value="status">Status</option>
+                <option value="title">Title</option>
+              </select>
+              <button
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                className="w-full px-3 py-2 rounded-lg bg-gray-50 text-gray-700 hover:bg-gray-100 text-sm font-medium flex items-center justify-center space-x-2 border border-gray-200 transition-all duration-200"
+              >
+                <svg className={`w-4 h-4 transition-transform duration-200 ${sortOrder === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
+                </svg>
+                <span>{sortOrder === 'asc' ? 'Ascending' : 'Descending'}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -3656,8 +3858,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
 
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900">Exams</h1>
+        <div className="flex items-center justify-end">
           <div className="flex space-x-3">
             <button
               onClick={() => setShowExamModal(true)}
@@ -3743,7 +3944,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                           {isPast ? '✓' : daysUntil}
                         </span>
                       </div>
-                      <p className={`text-xs mt-1 font-medium ${
+                      <p className={`text-xs mt-1 font-medium text-center ${
                         isPast 
                           ? 'text-gray-500' 
                           : daysUntil <= 7 
@@ -3797,8 +3998,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
 
   const renderSubjects = () => (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Subjects</h1>
+      <div className="flex items-center justify-end">
         <div className="flex space-x-3">
           <button
             onClick={() => setShowSubjectsModal(true)}
@@ -3837,8 +4037,17 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
             </div>
             <div className="mt-4 flex space-x-2">
               <button 
+                onClick={() => {
+                  setEditingSubject(subject);
+                  setShowSubjectsModal(true);
+                }}
+                className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+              >
+                Edit
+              </button>
+              <button 
                 onClick={() => handleDeleteSubject(subject.id)}
-                className="text-red-600 hover:text-red-700 text-sm font-medium"
+                className="px-3 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
               >
                 Delete
               </button>
@@ -4464,7 +4673,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
           <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] flex flex-col">
             <div className="p-6 border-b border-gray-200">
               <h3 className="text-xl font-bold text-gray-900">
-              Add New Assignment
+                {editingAssignment ? 'Edit Assignment' : 'Add New Assignment'}
             </h3>
             </div>
             <div className="flex-1 overflow-y-auto p-6">
@@ -4479,17 +4688,36 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                   const autoPriority = calculateAutoPriority(assignmentForm.deadline);
                   const fileSize = assignmentForm.pdfFile ? assignmentForm.pdfFile.size / (1024 * 1024) : 0; // Convert to MB
                   
-                  handleAddAssignment({
-                    title: assignmentForm.title,
-                    subjectId: assignmentForm.subjectId,
-                    subjectName: subject.name,
-                    pdfUrl: assignmentForm.pdfFile ? URL.createObjectURL(assignmentForm.pdfFile) : '',
-                    deadline: new Date(assignmentForm.deadline),
-                    status: 'pending',
-                    priority: autoPriority,
-                    fileSize: fileSize,
-                    submissionType: assignmentForm.submissionType,
-                  });
+                  console.log('Form submitted. editingAssignment:', editingAssignment);
+                  if (editingAssignment) {
+                    // Update existing assignment
+                    console.log('Updating assignment with ID:', editingAssignment.id);
+                    handleUpdateAssignment(editingAssignment.id, {
+                      title: assignmentForm.title,
+                      subjectId: assignmentForm.subjectId,
+                      subjectName: subject.name,
+                      pdfUrl: assignmentForm.pdfFile ? URL.createObjectURL(assignmentForm.pdfFile) : editingAssignment.pdfUrl,
+                      deadline: new Date(assignmentForm.deadline),
+                      status: editingAssignment.status, // Keep existing status
+                      priority: autoPriority,
+                      fileSize: fileSize || editingAssignment.fileSize,
+                      submissionType: assignmentForm.submissionType,
+                    });
+                  } else {
+                    // Add new assignment
+                    console.log('Adding new assignment');
+                    handleAddAssignment({
+                      title: assignmentForm.title,
+                      subjectId: assignmentForm.subjectId,
+                      subjectName: subject.name,
+                      pdfUrl: assignmentForm.pdfFile ? URL.createObjectURL(assignmentForm.pdfFile) : '',
+                      deadline: new Date(assignmentForm.deadline),
+                      status: 'pending',
+                      priority: autoPriority,
+                      fileSize: fileSize,
+                      submissionType: assignmentForm.submissionType,
+                    });
+                  }
                 }
               }}
             >
@@ -4670,6 +4898,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                   type="button"
                   onClick={() => {
                     setShowUploadModal(false);
+                    setEditingAssignment(null);
                     setAssignmentForm({
                       title: '',
                       subjectId: '',
@@ -4716,7 +4945,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                   }}
                   className="flex-1 btn-primary"
                 >
-                  Add Assignment
+                  {editingAssignment ? 'Update Assignment' : 'Add Assignment'}
                 </button>
               </div>
             </div>
@@ -5132,7 +5361,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-gray-900 mb-4">
-              Add New Subject
+              {editingSubject ? 'Edit Subject' : 'Add New Subject'}
             </h3>
             <form
               className="space-y-4"
@@ -5142,7 +5371,13 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                 const name = formData.get('name') as string;
                 const code = formData.get('code') as string;
                 if (name && code) {
-                  handleAddSubject(name, code);
+                  if (editingSubject) {
+                    handleEditSubject(editingSubject.id, name, code);
+                    setEditingSubject(null);
+                  } else {
+                    handleAddSubject(name, code);
+                  }
+                  setShowSubjectsModal(false);
                 }
               }}
             >
@@ -5155,6 +5390,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                   name="name"
                   className="input-field"
                   placeholder="Enter subject name"
+                  defaultValue={editingSubject?.name || ''}
                   required
                 />
               </div>
@@ -5167,19 +5403,23 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                   name="code"
                   className="input-field"
                   placeholder="Enter subject code (e.g., MATH101)"
+                  defaultValue={editingSubject?.code || ''}
                   required
                 />
               </div>
               <div className="flex space-x-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowSubjectsModal(false)}
+                  onClick={() => {
+                    setShowSubjectsModal(false);
+                    setEditingSubject(null);
+                  }}
                   className="flex-1 btn-secondary"
                 >
                   Cancel
                 </button>
                 <button type="submit" className="flex-1 btn-primary">
-                  Add Subject
+                  {editingSubject ? 'Update Subject' : 'Add Subject'}
                 </button>
               </div>
             </form>
