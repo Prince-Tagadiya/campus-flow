@@ -16,6 +16,7 @@
     "@types/react-dom": "^19.1.9",
     "firebase": "^12.2.1",
     "framer-motion": "^12.23.12",
+    "lucide-react": "^0.542.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-grid-layout": "^1.5.2",

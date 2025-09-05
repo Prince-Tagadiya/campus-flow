@@ -16,12 +16,38 @@ import {
   BellIcon,
 } from '@heroicons/react/24/outline';
 import {
+  Clock,
+  User,
+  Plus,
+  FileText,
+  Check,
+  Menu,
+  X,
+  Cloud,
+  BookOpen,
+  BarChart3,
+  Bell,
+  Target,
+  TrendingUp,
+  Calendar,
+  Zap,
+  BookMarked,
+  GraduationCap,
+  Brain,
+  Lightbulb,
+  Timer,
+  HardDrive,
+  Activity,
+  Award,
+  MessageSquare
+} from 'lucide-react';
+import {
   Assignment,
   Exam,
   StorageInfo,
   Subject,
   Material,
-  Notification,
+  Notification as NotificationType,
   DashboardCard,
   SubjectProgress,
   StudySession,
@@ -118,8 +144,12 @@ const StudentDashboard: React.FC = () => {
     },
   ]);
 
-  // UI state: assignment priority filter
+  // UI state: assignment filters and sorting
   const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
+  const [subjectFilter, setSubjectFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [sortBy, setSortBy] = useState<'deadline' | 'subject' | 'priority' | 'status' | 'title'>('deadline');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [exams, setExams] = useState<Exam[]>([
     {
       id: '1',
@@ -199,7 +229,7 @@ const StudentDashboard: React.FC = () => {
       createdAt: new Date(),
     },
   ]);
-  const [notifications, setNotifications] = useState<Notification[]>([
+  const [notifications, setNotifications] = useState<NotificationType[]>([
     {
       id: '1',
       studentId: '1',
@@ -212,6 +242,7 @@ const StudentDashboard: React.FC = () => {
   ]);
   const [nextDeadline, setNextDeadline] = useState<Assignment | null>(null);
   const [nextExam, setNextExam] = useState<Exam | null>(null);
+  const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
   const [daysUntilDeadline, setDaysUntilDeadline] = useState<number>(0);
   const [daysUntilExam, setDaysUntilExam] = useState<number>(0);
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -225,8 +256,20 @@ const StudentDashboard: React.FC = () => {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [customizeMode, setCustomizeMode] = useState(false);
 
+  // Navigation items
+  const navigationItems = [
+    { id: 'dashboard', name: 'Dashboard', icon: BarChart3 },
+    { id: 'assignments', name: 'Assignments', icon: FileText },
+    { id: 'exams', name: 'Exams', icon: BookOpen },
+    { id: 'subjects', name: 'Subjects', icon: GraduationCap },
+    { id: 'materials', name: 'Materials', icon: BookMarked },
+    { id: 'notifications', name: 'Notifications', icon: Bell },
+    { id: 'storage', name: 'Storage', icon: Cloud },
+    { id: 'account', name: 'Account', icon: User },
+  ];
+
   // Custom notification and modal states
-  const [showNotification, setShowNotification] = useState(false);
+  const [showCustomNotification, setShowCustomNotification] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
   const [notificationType, setNotificationType] = useState<'success' | 'error' | 'warning' | 'info'>('info');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -566,9 +609,228 @@ const StudentDashboard: React.FC = () => {
     }, 1200);
   };
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [pomodoroTime, setPomodoroTime] = useState(25 * 60); // 25 minutes in seconds
+  const [pomodoroTime, setPomodoroTime] = useState(25); // 25 minutes
+  const [currentPomodoroTime, setCurrentPomodoroTime] = useState(25); // Current countdown time
   const [isPomodoroRunning, setIsPomodoroRunning] = useState(false);
   const [isPomodoroMinimized, setIsPomodoroMinimized] = useState(false);
+  const [pomodoroInterval, setPomodoroInterval] = useState<NodeJS.Timeout | null>(null);
+  const [showTimePopup, setShowTimePopup] = useState(false);
+  const [customMinutes, setCustomMinutes] = useState(25);
+  const [customSeconds, setCustomSeconds] = useState(0);
+  const [showStreakAnimation, setShowStreakAnimation] = useState(false);
+  const [streakIncrement, setStreakIncrement] = useState(0);
+  const [lastLoginDate, setLastLoginDate] = useState<string>('');
+
+  // Notification functions
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+  };
+
+  const showNotification = (title: string, body: string, icon?: string) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, {
+        body,
+        icon: icon || '/logo192.png',
+        badge: '/logo192.png',
+        tag: 'pomodoro-timer',
+        requireInteraction: true
+      });
+    }
+  };
+
+  const motivationalMessages = [
+    "🎉 Great job! You've completed your focus session!",
+    "🌟 Excellent work! Time for a well-deserved break!",
+    "💪 You're doing amazing! Keep up the great focus!",
+    "🚀 Fantastic! Your productivity is on fire!",
+    "⭐ Outstanding! You've mastered the art of focus!",
+    "🔥 Incredible! You're unstoppable today!",
+    "🎯 Perfect! You've achieved your goal!",
+    "✨ Wonderful! Your dedication is inspiring!"
+  ];
+
+  const getRandomMotivation = () => {
+    return motivationalMessages[Math.floor(Math.random() * motivationalMessages.length)];
+  };
+
+  // Pomodoro Timer functions
+  const togglePomodoro = () => {
+    if (isPomodoroRunning) {
+      // Pause timer
+      if (pomodoroInterval) {
+        clearInterval(pomodoroInterval);
+        setPomodoroInterval(null);
+      }
+      setIsPomodoroRunning(false);
+    } else {
+      // Request notification permission when starting timer
+      requestNotificationPermission();
+      
+      // Start timer
+      setIsPomodoroRunning(true);
+      const interval = setInterval(() => {
+        setCurrentPomodoroTime(prev => {
+          if (prev <= 1) {
+            // Timer finished
+            clearInterval(interval);
+            setPomodoroInterval(null);
+            setIsPomodoroRunning(false);
+            
+            // Show completion notification
+            showNotification(
+              "🍅 Pomodoro Complete!",
+              getRandomMotivation()
+            );
+            
+            // Reset to selected time
+            setCurrentPomodoroTime(pomodoroTime);
+            return pomodoroTime;
+          }
+          
+          // Show notifications for remaining time
+          if (prev === 300) { // 5 minutes remaining
+            showNotification(
+              "⏰ 5 Minutes Left!",
+              "You're doing great! Keep up the focus! 💪"
+            );
+          } else if (prev === 60) { // 1 minute remaining
+            showNotification(
+              "⏰ 1 Minute Left!",
+              "Almost there! You've got this! 🚀"
+            );
+          }
+          
+          return prev - 1;
+        });
+      }, 1000);
+      setPomodoroInterval(interval);
+    }
+  };
+
+  const resetPomodoro = () => {
+    if (pomodoroInterval) {
+      clearInterval(pomodoroInterval);
+      setPomodoroInterval(null);
+    }
+    setIsPomodoroRunning(false);
+    setPomodoroTime(25); // Reset to default 25 minutes
+    setCurrentPomodoroTime(25); // Reset current time
+  };
+
+  const openTimePopup = () => {
+    if (!isPomodoroRunning) {
+      setCustomMinutes(Math.floor(pomodoroTime / 60));
+      setCustomSeconds(pomodoroTime % 60);
+      setShowTimePopup(true);
+    }
+  };
+
+  const applyCustomTime = () => {
+    const totalSeconds = customMinutes * 60 + customSeconds;
+    if (totalSeconds > 0 && totalSeconds <= 3600) { // Max 1 hour
+      setPomodoroTime(totalSeconds);
+      setCurrentPomodoroTime(totalSeconds);
+      setShowTimePopup(false);
+    }
+  };
+
+  const closeTimePopup = () => {
+    setShowTimePopup(false);
+  };
+
+  // Daily login tracking functions
+  const getTodayString = () => {
+    return new Date().toDateString();
+  };
+
+  const checkAndUpdateStreak = () => {
+    const today = getTodayString();
+    const storedLastLogin = localStorage.getItem('lastLoginDate');
+    const currentStreak = parseInt(localStorage.getItem('currentStreak') || '0');
+    const longestStreak = parseInt(localStorage.getItem('longestStreak') || '0');
+
+    // If it's a new day
+    if (storedLastLogin !== today) {
+      // Check if it's consecutive (yesterday)
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayString = yesterday.toDateString();
+
+      let newStreak = currentStreak;
+      
+      if (storedLastLogin === yesterdayString) {
+        // Consecutive day - increment streak
+        newStreak = currentStreak + 1;
+        setStreakIncrement(1);
+        setShowStreakAnimation(true);
+        
+        // Show streak notification
+        showNotification(
+          "🔥 Streak Updated!",
+          `Amazing! You're on a ${newStreak} day streak! Keep it up! 🚀`
+        );
+      } else if (storedLastLogin && storedLastLogin !== yesterdayString) {
+        // Streak broken - reset to 1
+        newStreak = 1;
+        setStreakIncrement(1);
+        setShowStreakAnimation(true);
+        
+        showNotification(
+          "🎯 New Streak Started!",
+          "Welcome back! Starting fresh with a 1 day streak! 💪"
+        );
+      } else {
+        // First time user
+        newStreak = 1;
+        setStreakIncrement(1);
+        setShowStreakAnimation(true);
+        
+        showNotification(
+          "🌟 Welcome!",
+          "Welcome to CampusFlow! Starting your journey with a 1 day streak! 🎉"
+        );
+      }
+
+      // Update longest streak if needed
+      const newLongestStreak = Math.max(longestStreak, newStreak);
+
+      // Save to localStorage
+      localStorage.setItem('lastLoginDate', today);
+      localStorage.setItem('currentStreak', newStreak.toString());
+      localStorage.setItem('longestStreak', newLongestStreak.toString());
+
+      // Update state
+      setLastLoginDate(today);
+      setStreaks(prev => prev.map(streak => 
+        streak.type === 'study' 
+          ? { ...streak, currentStreak: newStreak, longestStreak: newLongestStreak, lastActivity: new Date() }
+          : streak
+      ));
+
+      // Hide animation after 3 seconds
+      setTimeout(() => {
+        setShowStreakAnimation(false);
+        setStreakIncrement(0);
+      }, 3000);
+    }
+  };
+
+  const getCurrentStreak = () => {
+    return parseInt(localStorage.getItem('currentStreak') || '0');
+  };
+
+  const getLongestStreak = () => {
+    return parseInt(localStorage.getItem('longestStreak') || '0');
+  };
+
+  // Update current time when pomodoro time changes
+  useEffect(() => {
+    if (!isPomodoroRunning) {
+      setCurrentPomodoroTime(pomodoroTime);
+    }
+  }, [pomodoroTime, isPomodoroRunning]);
 
   // Real-time updates
   useEffect(() => {
@@ -578,19 +840,20 @@ const StudentDashboard: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Pomodoro timer
+  // Check streak on component mount
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isPomodoroRunning && pomodoroTime > 0) {
-      interval = setInterval(() => {
-        setPomodoroTime(time => time - 1);
-      }, 1000);
-    } else if (pomodoroTime === 0) {
-      setIsPomodoroRunning(false);
-      // Add notification or sound here
-    }
-    return () => clearInterval(interval);
-  }, [isPomodoroRunning, pomodoroTime]);
+    checkAndUpdateStreak();
+  }, []);
+
+  // Cleanup Pomodoro timer on unmount
+  useEffect(() => {
+    return () => {
+      if (pomodoroInterval) {
+        clearInterval(pomodoroInterval);
+      }
+    };
+  }, [pomodoroInterval]);
+
 
   // AI suggestion generation simulation
   useEffect(() => {
@@ -616,17 +879,7 @@ const StudentDashboard: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Navigation items
-  const navigationItems = [
-    { id: 'dashboard', name: 'Dashboard', icon: ChartBarIcon },
-    { id: 'assignments', name: 'Assignments', icon: DocumentTextIcon },
-    { id: 'exams', name: 'Exams', icon: BookOpenIcon },
-    { id: 'subjects', name: 'Subjects', icon: BookOpenIcon },
-    { id: 'materials', name: 'Materials', icon: DocumentTextIcon },
-    { id: 'notifications', name: 'Notifications', icon: BellIcon },
-    { id: 'storage', name: 'Storage', icon: CloudIcon },
-    { id: 'account', name: 'Account', icon: UserIcon },
-  ];
+
 
   // Firebase functions for subjects
   const loadSubjectsFromFirebase = useCallback(async () => {
@@ -792,7 +1045,7 @@ const StudentDashboard: React.FC = () => {
       );
       
       const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
-        const notificationsData: Notification[] = [];
+        const notificationsData: NotificationType[] = [];
         snapshot.forEach((doc) => {
           const data = doc.data();
           notificationsData.push({
@@ -873,7 +1126,7 @@ const StudentDashboard: React.FC = () => {
     if (window.confirm('Are you sure you want to delete this assignment?')) {
       try {
         await deleteDoc(doc(db, 'assignments', id));
-        setAssignments(assignments.filter((a) => a.id !== id));
+      setAssignments(assignments.filter((a) => a.id !== id));
       } catch (error) {
         console.error('Error deleting assignment:', error);
         alert('Failed to delete assignment. Please try again.');
@@ -887,7 +1140,7 @@ const StudentDashboard: React.FC = () => {
     if (window.confirm('Are you sure you want to delete this exam?')) {
       try {
         await deleteDoc(doc(db, 'exams', id));
-        setExams(exams.filter((e) => e.id !== id));
+      setExams(exams.filter((e) => e.id !== id));
       } catch (error) {
         console.error('Error deleting exam:', error);
         alert('Failed to delete exam. Please try again.');
@@ -907,18 +1160,50 @@ const StudentDashboard: React.FC = () => {
           status: newStatus
         });
         
-        setAssignments(
-          assignments.map((a) =>
-            a.id === id
+    setAssignments(
+      assignments.map((a) =>
+        a.id === id
               ? { ...a, status: newStatus }
-              : a
-          )
-        );
+          : a
+      )
+    );
       }
     } catch (error) {
       console.error('Error updating assignment status:', error);
       alert('Failed to update assignment status. Please try again.');
     }
+  };
+
+  const handleDuplicateAssignment = async (assignment: Assignment) => {
+    if (!currentUser?.id) return;
+    
+    try {
+      const duplicatedAssignment: Omit<Assignment, 'id'> = {
+        ...assignment,
+        title: `${assignment.title} (Copy)`,
+        status: 'pending',
+        createdAt: new Date(),
+        deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Set deadline to 7 days from now
+      };
+      
+      const docRef = await addDoc(collection(db, 'assignments'), duplicatedAssignment);
+      
+      const newAssignmentWithId: Assignment = {
+        ...duplicatedAssignment,
+        id: docRef.id,
+      };
+      
+      setAssignments([...assignments, newAssignmentWithId]);
+      showCustomNotificationMessage('Assignment duplicated successfully!', 'success');
+    } catch (error) {
+      console.error('Error duplicating assignment:', error);
+      alert('Failed to duplicate assignment. Please try again.');
+    }
+  };
+
+  const handleEditAssignment = (assignment: Assignment) => {
+    setEditingAssignment(assignment);
+    setShowUploadModal(true);
   };
 
   const handleAddAssignment = async (
@@ -928,10 +1213,10 @@ const StudentDashboard: React.FC = () => {
     
     try {
       const newAssignment = {
-        ...assignment,
+      ...assignment,
         studentId: currentUser.id,
-        createdAt: new Date(),
-      };
+      createdAt: new Date(),
+    };
       
       const docRef = await addDoc(collection(db, 'assignments'), newAssignment);
       
@@ -941,7 +1226,7 @@ const StudentDashboard: React.FC = () => {
       };
       
       setAssignments([...assignments, newAssignmentWithId]);
-      setShowUploadModal(false);
+    setShowUploadModal(false);
     } catch (error) {
       console.error('Error adding assignment:', error);
       alert('Failed to add assignment. Please try again.');
@@ -955,10 +1240,10 @@ const StudentDashboard: React.FC = () => {
     
     try {
       const newExam = {
-        ...exam,
+      ...exam,
         studentId: currentUser.id,
-        createdAt: new Date(),
-      };
+      createdAt: new Date(),
+    };
       
       const docRef = await addDoc(collection(db, 'exams'), newExam);
       
@@ -968,7 +1253,7 @@ const StudentDashboard: React.FC = () => {
       };
       
       setExams([...exams, newExamWithId]);
-      setShowExamModal(false);
+    setShowExamModal(false);
     } catch (error) {
       console.error('Error adding exam:', error);
       alert('Failed to add exam. Please try again.');
@@ -1020,10 +1305,10 @@ const StudentDashboard: React.FC = () => {
           setAssignments(assignments.filter(a => a.subjectId !== id));
           setExams(exams.filter(e => e.subjectId !== id));
           
-          showCustomNotification('Subject deleted successfully!', 'success');
+          showCustomNotificationMessage('Subject deleted successfully!', 'success');
         } catch (error) {
           console.error('Error deleting subject:', error);
-          showCustomNotification('Failed to delete subject. Please try again.', 'error');
+          showCustomNotificationMessage('Failed to delete subject. Please try again.', 'error');
         }
       },
       'danger',
@@ -1046,10 +1331,10 @@ const StudentDashboard: React.FC = () => {
         n.id === notificationId ? { ...n, isRead: true } : n
       ));
       
-      showCustomNotification('Notification marked as read', 'success');
+      showCustomNotificationMessage('Notification marked as read', 'success');
     } catch (error) {
       console.error('Error marking notification as read:', error);
-      showCustomNotification('Failed to mark notification as read. Please try again.', 'error');
+      showCustomNotificationMessage('Failed to mark notification as read. Please try again.', 'error');
     }
   };
 
@@ -1070,10 +1355,10 @@ const StudentDashboard: React.FC = () => {
           // Remove from local state
           setNotifications(notifications.filter(n => n.id !== notificationId));
           
-          showCustomNotification('Notification deleted successfully!', 'success');
+          showCustomNotificationMessage('Notification deleted successfully!', 'success');
         } catch (error) {
           console.error('Error deleting notification:', error);
-          showCustomNotification('Failed to delete notification. Please try again.', 'error');
+          showCustomNotificationMessage('Failed to delete notification. Please try again.', 'error');
         }
       },
       'warning',
@@ -1101,10 +1386,10 @@ const StudentDashboard: React.FC = () => {
       // Update local state
       setNotifications(notifications.map(n => ({ ...n, isRead: true })));
       
-      showCustomNotification('All notifications marked as read!', 'success');
+      showCustomNotificationMessage('All notifications marked as read!', 'success');
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
-      showCustomNotification('Failed to mark all notifications as read. Please try again.', 'error');
+      showCustomNotificationMessage('Failed to mark all notifications as read. Please try again.', 'error');
     }
   };
 
@@ -1113,14 +1398,14 @@ const StudentDashboard: React.FC = () => {
   };
 
   // Custom notification functions
-  const showCustomNotification = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
+  const showCustomNotificationMessage = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
     setNotificationMessage(message);
     setNotificationType(type);
-    setShowNotification(true);
+    setShowCustomNotification(true);
     
     // Auto hide after 4 seconds
     setTimeout(() => {
-      setShowNotification(false);
+      setShowCustomNotification(false);
     }, 4000);
   };
 
@@ -1180,10 +1465,10 @@ const StudentDashboard: React.FC = () => {
               : a
           ));
           
-          showCustomNotification('File deleted successfully!', 'success');
+          showCustomNotificationMessage('File deleted successfully!', 'success');
         } catch (error) {
           console.error('Error deleting file:', error);
-          showCustomNotification('Failed to delete file. Please try again.', 'error');
+          showCustomNotificationMessage('Failed to delete file. Please try again.', 'error');
         }
       },
       'danger',
@@ -1477,64 +1762,700 @@ const StudentDashboard: React.FC = () => {
   };
 
   const renderDashboard = () => {
-    const ordered = [...cards].sort((a, b) => a.order - b.order).filter((c) => c.enabled);
-
     return (
-      <div className="space-y-6">
-        {/* Top info bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8">
-          <div 
-            className="p-4 rounded-lg bg-white border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
-            onClick={() => setCurrentPage('assignments')}
-          >
-            <p className="text-sm text-gray-600">Pending Assignments</p>
-            <p className="text-2xl font-bold text-gray-900">{assignments.filter(a => a.status === 'pending').length}</p>
-            <p className="text-xs text-gray-500 mt-1">Click to view all</p>
-          </div>
-          <div 
-            className="p-4 rounded-lg bg-white border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
-            onClick={() => setCurrentPage('exams')}
-          >
-            <p className="text-sm text-gray-600">Next Exam</p>
-            <p className="text-2xl font-bold text-gray-900">{daysUntilExam > 0 ? `${daysUntilExam} days` : '—'}</p>
-            {nextExam && (
-              <p className="text-xs text-gray-500 mt-1">{nextExam.subjectName}</p>
-            )}
-            <p className="text-xs text-gray-500">Click to view all</p>
-          </div>
-          <div 
-            className="p-4 rounded-lg bg-white border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
-            onClick={() => setCurrentPage('subjects')}
-          >
-            <p className="text-sm text-gray-600">Total Subjects</p>
-            <p className="text-2xl font-bold text-gray-900">{subjects.length}</p>
-            <p className="text-xs text-gray-500 mt-1">Click to manage</p>
-          </div>
-          <div 
-            className="p-4 rounded-lg bg-white border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
-            onClick={() => setCurrentPage('storage')}
-          >
-            <p className="text-sm text-gray-600">Storage Used</p>
-            <p className="text-2xl font-bold text-gray-900">{storageInfo.percentage.toFixed(0)}%</p>
-            <p className="text-xs text-gray-500 mt-1">Click to manage</p>
-          </div>
-        </div>
-
-        {/* Header */}
+      <div className="min-h-screen bg-gray-50">
+        {/* Main content */}
+        <div className="w-full">
+          {/* Dashboard Grid Layout */}
+          <div className="p-6">
+            {/* Welcome Header */}
         <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">
-              Welcome back, {currentUser?.name?.split(' ')[0]}! 👋
-            </h1>
-          <p className="text-gray-600">Here is your dashboard overview.</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Welcome back, {currentUser?.name?.split(' ')[0]}! 👋
+                </h1>
+                <p className="text-gray-600">Here is your dashboard overview.</p>
+              </div>
+              
+              {/* Streak Badge */}
+              {getCurrentStreak() > 0 && (
+                <div className="flex items-center space-x-2 bg-gradient-to-r from-orange-100 to-orange-200 px-4 py-2 rounded-full border-2 border-orange-300">
+                  <span className="text-2xl">🔥</span>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-orange-700">{getCurrentStreak()}</div>
+                    <div className="text-xs text-orange-600">day streak</div>
+                  </div>
+                </div>
+              )}
+            </div>
         </div>
 
-        {/* Simple CSS grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 auto-rows-[minmax(260px,auto)]">
-            {ordered.map((c) => (
-            <div key={c.id} className={`${getCardSpanClass(c.size)} ${getCardHeightClass(c.size)} overflow-hidden`}>
-                {renderCardById(c)}
+            {/* Row 1: Dashboard Overview (6) + AI Assistant (6) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+              {/* Dashboard Overview */}
+              <div className="lg:col-span-6">
+                <div className="bg-white rounded-2xl shadow-md p-6 hover:shadow-lg hover:border-orange-400 border border-gray-200 transition-all duration-300 h-80 flex flex-col">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-bold text-gray-900 flex items-center">
+                      <BarChart3 className="w-6 h-6 mr-2 text-orange-500" />
+                      Dashboard Overview
+                    </h2>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 flex-1 overflow-y-auto max-h-48">
+                    <div className="text-center p-4 bg-orange-50 rounded-xl flex flex-col justify-center">
+                      <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mx-auto mb-2">
+                        <FileText className="w-6 h-6 text-orange-600" />
+                      </div>
+            <p className="text-2xl font-bold text-gray-900">{assignments.filter(a => a.status === 'pending').length}</p>
+                      <p className="text-sm text-gray-600">Pending</p>
+          </div>
+                    <div className="text-center p-4 bg-blue-50 rounded-xl flex flex-col justify-center">
+                      <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-2">
+                        <BookOpen className="w-6 h-6 text-blue-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900">{exams.length}</p>
+                      <p className="text-sm text-gray-600">Exams</p>
+                    </div>
+                    <div className="text-center p-4 bg-green-50 rounded-xl flex flex-col justify-center">
+                      <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-2">
+                        <Check className="w-6 h-6 text-green-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900">{assignments.filter(a => a.status === 'completed').length}</p>
+                      <p className="text-sm text-gray-600">Completed</p>
+                    </div>
+                    <div className="text-center p-4 bg-purple-50 rounded-xl flex flex-col justify-center">
+                      <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-2">
+                        <GraduationCap className="w-6 h-6 text-purple-600" />
+                      </div>
+                      <p className="text-2xl font-bold text-gray-900">{subjects.length}</p>
+                      <p className="text-sm text-gray-600">Subjects</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* AI Assistant */}
+              <div className="lg:col-span-6">
+                <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl shadow-md p-6 hover:shadow-lg hover:border-orange-400 border border-orange-200 transition-all duration-300 h-80 flex flex-col">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-bold text-gray-900 flex items-center">
+                      <Brain className="w-6 h-6 mr-2 text-orange-500" />
+                      AI Assistant
+                    </h2>
+                  </div>
+                  <div className="space-y-3 flex-1 overflow-y-auto">
+                    <div className="p-3 bg-white rounded-lg border border-orange-100">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900 text-sm">Review Calculus Notes</p>
+                          <p className="text-xs text-gray-600 mt-1">Based on your upcoming exam</p>
+                        </div>
+                        <span className="px-2 py-1 text-xs font-medium rounded-full border bg-red-100 text-red-800 border-red-200">
+                          high
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-3 bg-white rounded-lg border border-orange-100">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900 text-sm">Take a Study Break</p>
+                          <p className="text-xs text-gray-600 mt-1">You've been studying for 2 hours</p>
+                        </div>
+                        <span className="px-2 py-1 text-xs font-medium rounded-full border bg-yellow-100 text-yellow-800 border-yellow-200">
+                          medium
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: Pending Assignments (4) + Next Exam (4) + Streak Tracker (4) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6 mb-6">
+              {/* Pending Assignments */}
+              <div className="md:col-span-1 lg:col-span-4">
+                <div className="bg-white rounded-2xl shadow-md p-6 hover:shadow-lg hover:border-orange-400 border border-gray-200 transition-all duration-300 h-64 flex flex-col">
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center mb-4">
+                    <FileText className="w-5 h-5 mr-2 text-orange-500" />
+                    Pending Assignments
+                  </h2>
+                  <div className="space-y-3 flex-1 overflow-y-auto">
+                    {assignments.filter(a => a.status === 'pending').slice(0, 4).map((assignment) => {
+                      const daysLeft = Math.ceil((assignment.deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    return (
+                        <div key={assignment.id} className="p-3 bg-orange-50 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <p className="font-medium text-gray-900 text-sm">{assignment.title}</p>
+                              <p className="text-xs text-gray-600">{assignment.subjectName}</p>
+                              {assignment.pdfUrl && (
+                                <button 
+                                  onClick={() => window.open(assignment.pdfUrl, '_blank')}
+                                  className="mt-1 text-xs text-blue-600 hover:text-blue-800 underline"
+                                >
+                                  📄 View PDF
+                                </button>
+                              )}
+                            </div>
+                            <span className="text-sm font-semibold text-orange-600">{daysLeft}d</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Next Exam */}
+              <div className="md:col-span-1 lg:col-span-4">
+                <div className="bg-gradient-to-br from-white to-blue-50 rounded-2xl shadow-lg p-6 hover:shadow-xl hover:border-blue-400 border-2 border-blue-200 transition-all duration-300 h-64 flex flex-col">
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center mb-4">
+                    <BookOpen className="w-5 h-5 mr-2 text-blue-500" />
+                    Next Exam
+                  </h2>
+                  <div className="flex-1 flex items-center justify-center">
+                    {(() => {
+                      // Find the next upcoming exam
+                      const now = new Date();
+                      const upcomingExams = exams.filter(exam => exam.examDate > now);
+                      const nextExam = upcomingExams.length > 0 
+                        ? upcomingExams.sort((a, b) => a.examDate.getTime() - b.examDate.getTime())[0]
+                        : null;
+                      
+                      return nextExam ? (
+                        <div className="text-center w-full space-y-3">
+                          {/* Days Left Circle */}
+                          <div className="relative">
+                            <div className="w-20 h-20 mx-auto bg-gradient-to-br from-blue-100 to-blue-200 rounded-full flex items-center justify-center shadow-lg border-2 border-blue-300">
+                              <div className="text-center">
+                                <div className="text-xl font-bold text-blue-700">
+                                  {Math.ceil((nextExam.examDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))}
+                                </div>
+                                <div className="text-xs text-blue-600 font-medium">days</div>
+                              </div>
+                            </div>
+                            <div className="absolute -top-1 -right-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center shadow-md">
+                              <span className="text-white text-xs">📚</span>
+                            </div>
+                          </div>
+                          
+                          {/* Exam Details */}
+                          <div className="bg-white rounded-lg p-3 shadow-md border border-blue-200">
+                            <p className="font-semibold text-gray-900 text-sm mb-1 leading-tight" title={nextExam.subjectName}>
+                              {nextExam.subjectName}
+                            </p>
+                            <p className="text-xs text-gray-600 mb-1 font-medium">
+                              {nextExam.examDate.toLocaleDateString('en-US', { 
+                                weekday: 'short', 
+                                year: 'numeric', 
+                                month: 'short', 
+                                day: 'numeric' 
+                              })}
+                            </p>
+                            <div className="flex items-center justify-center space-x-1">
+                              <span className="text-xs text-blue-600 font-medium">⏰</span>
+                              <span className="text-xs text-gray-700 font-medium">{nextExam.startTime} - {nextExam.endTime}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center">
+                          <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                            <span className="text-2xl text-gray-400">📚</span>
+                          </div>
+                          <p className="text-gray-500 text-sm">No upcoming exams</p>
+                          <p className="text-gray-400 text-xs mt-1">You're all caught up!</p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Streak Tracker */}
+              <div className="md:col-span-1 lg:col-span-4">
+                <div className="bg-white rounded-2xl shadow-md p-6 hover:shadow-lg hover:border-orange-400 border border-gray-200 transition-all duration-300 h-64 flex flex-col">
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center mb-4">
+                    <TrendingUp className="w-5 h-5 mr-2 text-orange-500" />
+                    Streak Tracker
+                  </h2>
+                  <div className="flex-1 flex flex-col justify-center items-center relative">
+                    <div className={`w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mb-4 transition-all duration-500 ${
+                      showStreakAnimation ? 'scale-125 animate-pulse' : 'scale-100'
+                    }`}>
+                      <span className="text-3xl font-bold text-orange-600">{getCurrentStreak()}</span>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">Current Streak</p>
+                    <p className="text-xs text-gray-500 mb-4">Longest: {getLongestStreak()} days</p>
+                    <div className="w-full">
+                      <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div 
+                          className="bg-gradient-to-r from-orange-400 to-orange-600 h-3 rounded-full transition-all duration-1000"
+                          style={{ 
+                            width: `${Math.min(100, (getCurrentStreak() / Math.max(getLongestStreak(), 1)) * 100)}%` 
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+                    {showStreakAnimation && (
+                      <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full animate-pulse">
+                        +{streakIncrement}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Row 3: Daily Motivation (12) - Full width */}
+            <div className="grid grid-cols-1 gap-6 mb-6">
+              {/* Daily Motivation */}
+              <div className="col-span-1">
+                <div className="bg-gradient-to-br from-purple-500 to-pink-500 text-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 h-64 flex flex-col">
+                  <h2 className="text-lg font-bold mb-4 flex items-center justify-between">
+                    <div className="flex items-center">
+                      <span className="mr-2">💪</span>
+                      Daily Motivation
+                    </div>
+                    <button 
+                      onClick={() => {
+                        // Refresh motivation quote
+                        const randomIndex = Math.floor(Math.random() * motivationQuotes.length);
+                        const newQuotes = [...motivationQuotes];
+                        [newQuotes[0], newQuotes[randomIndex]] = [newQuotes[randomIndex], newQuotes[0]];
+                        setMotivationQuotes(newQuotes);
+                      }}
+                      className="text-xs text-purple-200 hover:text-white underline"
+                    >
+                      refresh
+                    </button>
+                  </h2>
+                  <div className="flex-1 flex flex-col justify-center items-center text-center">
+                    <p className="text-lg font-medium mb-4 leading-relaxed">
+                      "{motivationQuotes[0]?.text}"
+                    </p>
+                    <p className="text-sm text-purple-100">
+                      - {motivationQuotes[0]?.author}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Row 4: Upcoming Exams (6) + Pomodoro Timer (3) + Storage Usage (3) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+              {/* Upcoming Exams */}
+              <div className="lg:col-span-6">
+                <div className="bg-white rounded-2xl shadow-md p-6 hover:shadow-lg hover:border-orange-400 border border-gray-200 transition-all duration-300 h-64 flex flex-col">
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center mb-4">
+                    <BookOpen className="w-5 h-5 mr-2 text-orange-500" />
+                    Upcoming Exams
+                  </h2>
+                  <div className="space-y-3 flex-1 overflow-y-auto">
+                    {(() => {
+                      // Sort exams by date, then by time
+                      const sortedExams = exams
+                        .filter(e => e.examDate > new Date())
+                        .sort((a, b) => {
+                          const aDate = new Date(a.examDate.getFullYear(), a.examDate.getMonth(), a.examDate.getDate()).getTime();
+                          const bDate = new Date(b.examDate.getFullYear(), b.examDate.getMonth(), b.examDate.getDate()).getTime();
+                          if (aDate !== bDate) return aDate - bDate;
+                          const [aH, aM] = (a.startTime || '00:00').split(':').map(Number);
+                          const [bH, bM] = (b.startTime || '00:00').split(':').map(Number);
+                          return aH !== bH ? aH - bH : aM - bM;
+                        })
+                        .slice(0, 4);
+
+                      // Calculate gap between exams
+                      const calculateGap = (currentIndex: number) => {
+                        if (currentIndex === 0) return null;
+                        const current = sortedExams[currentIndex];
+                        const previous = sortedExams[currentIndex - 1];
+                        const sameDay = current.examDate.toDateString() === previous.examDate.toDateString();
+                        
+                        if (sameDay) {
+                          const [prevEndH, prevEndM] = (previous.endTime || '00:00').split(':').map(Number);
+                          const [currStartH, currStartM] = (current.startTime || '00:00').split(':').map(Number);
+                          const prevEnd = new Date(previous.examDate);
+                          prevEnd.setHours(prevEndH, prevEndM, 0, 0);
+                          const currStart = new Date(current.examDate);
+                          currStart.setHours(currStartH, currStartM, 0, 0);
+                          const diffMs = currStart.getTime() - prevEnd.getTime();
+                          const hours = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60)));
+                          const minutes = Math.max(0, Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60)));
+                          return { type: 'hours', label: `${hours}h ${minutes}m gap` };
+                        }
+                        
+                        const dayDiff = Math.ceil((current.examDate.getTime() - previous.examDate.getTime()) / (1000 * 60 * 60 * 24));
+                        return { type: 'days', label: `${dayDiff}d gap` };
+                      };
+
+                      return sortedExams.map((exam, index) => {
+                        const daysLeft = Math.ceil((exam.examDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        const gap = calculateGap(index);
+                        
+                        return (
+                          <div key={exam.id} className="space-y-2">
+                            {gap && (
+                              <div className="text-center">
+                                <div className="inline-flex items-center px-2 py-1 bg-blue-100 rounded-full">
+                                  <span className="text-xs text-blue-600 font-medium">{gap.label}</span>
+                                </div>
+                              </div>
+                            )}
+                            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 hover:shadow-md transition-all duration-300">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <p className="font-semibold text-gray-900 text-sm">{exam.subjectName}</p>
+                                  <p className="text-xs text-gray-600 mb-1">
+                                    {exam.examDate.toLocaleDateString('en-US', { 
+                                      weekday: 'short', 
+                                      month: 'short', 
+                                      day: 'numeric' 
+                                    })}
+                                  </p>
+                                  <div className="flex items-center space-x-1">
+                                    <span className="text-xs text-blue-600">⏰</span>
+                                    <span className="text-xs text-gray-500">{exam.startTime} - {exam.endTime}</span>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <span className="text-sm font-bold text-blue-600">{daysLeft}</span>
+                                  </div>
+                                  <p className="text-xs text-gray-500 mt-1">days</p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                    {exams.filter(e => e.examDate > new Date()).length === 0 && (
+                      <div className="text-center py-8">
+                        <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                          <span className="text-2xl text-gray-400">📚</span>
+                        </div>
+                        <p className="text-gray-500 text-sm">No upcoming exams</p>
+                        <p className="text-gray-400 text-xs mt-1">You're all caught up!</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Pomodoro Timer */}
+              <div className="lg:col-span-3">
+                <div className="bg-gradient-to-br from-white to-orange-50 rounded-2xl shadow-lg p-4 hover:shadow-xl hover:border-orange-400 border-2 border-orange-200 transition-all duration-300 h-64 flex flex-col">
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center mb-3">
+                    <Timer className="w-5 h-5 mr-2 text-orange-500" />
+                    Pomodoro Timer
+                  </h2>
+                  
+                  {/* Circular Timer with Progress */}
+                  <div className="flex-1 flex items-center justify-center relative">
+                    <div className="relative">
+                      {/* Outer Progress Ring */}
+                      <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 120 120">
+                        {/* Background Circle */}
+                        <circle
+                          cx="60"
+                          cy="60"
+                          r="50"
+                          stroke="#f3f4f6"
+                          strokeWidth="8"
+                          fill="none"
+                        />
+                        {/* Progress Circle */}
+                        <circle
+                          cx="60"
+                          cy="60"
+                          r="50"
+                          stroke="url(#gradient)"
+                          strokeWidth="8"
+                          fill="none"
+                          strokeLinecap="round"
+                          strokeDasharray={`${2 * Math.PI * 50}`}
+                          strokeDashoffset={`${2 * Math.PI * 50 * (1 - ((pomodoroTime - currentPomodoroTime) / pomodoroTime))}`}
+                          className="transition-all duration-1000 ease-in-out"
+                        />
+                        <defs>
+                          <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#f97316" />
+                            <stop offset="100%" stopColor="#ea580c" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+                      
+                      {/* Timer Display */}
+                      <div 
+                        className={`absolute inset-0 flex items-center justify-center cursor-pointer transition-all duration-300 ${
+                          isPomodoroRunning 
+                            ? 'animate-pulse' 
+                            : 'hover:scale-105'
+                        }`}
+                        onClick={openTimePopup}
+                        title={isPomodoroRunning ? "Timer is running" : "Click to set custom time"}
+                      >
+                        <div className="text-center">
+                          <div className="text-xs text-orange-700 font-medium mb-1">TIMER</div>
+                          <div className="text-xl font-bold text-orange-800">
+                            {Math.floor(currentPomodoroTime / 60).toString().padStart(2, '0')}:{(currentPomodoroTime % 60).toString().padStart(2, '0')}
+                          </div>
+                          <div className="text-xs text-orange-600 mt-1">M:S</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Bottom Control Buttons */}
+                  <div className="flex space-x-2 mt-2">
+                    <button 
+                      onClick={togglePomodoro}
+                      className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all duration-300 transform hover:scale-105 shadow-md ${
+                        isPomodoroRunning 
+                          ? 'bg-orange-600 hover:bg-orange-700 text-white' 
+                          : 'bg-orange-500 hover:bg-orange-600 text-white'
+                      }`}
+                    >
+                      <span className="flex items-center justify-center space-x-1">
+                        <span>{isPomodoroRunning ? '⏸️' : '▶️'}</span>
+                        <span className="text-xs">{isPomodoroRunning ? 'Pause' : 'Start'}</span>
+                      </span>
+                    </button>
+                    <button 
+                      onClick={resetPomodoro}
+                      className="flex-1 bg-orange-400 hover:bg-orange-500 text-white py-2.5 px-3 rounded-lg text-sm font-semibold transition-all duration-300 transform hover:scale-105 shadow-md"
+                    >
+                      <span className="flex items-center justify-center space-x-1">
+                        <span>🔄</span>
+                        <span className="text-xs">Reset</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Streak Animation Overlay */}
+              {showStreakAnimation && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-2xl shadow-2xl p-8 w-96 max-w-sm mx-4 text-center animate-bounce">
+                    <div className="text-6xl mb-4">🔥</div>
+                    <h2 className="text-2xl font-bold text-orange-600 mb-2">Streak Updated!</h2>
+                    <div className="text-4xl font-bold text-orange-700 mb-2">
+                      +{streakIncrement}
+                    </div>
+                    <p className="text-gray-600 mb-4">
+                      {getCurrentStreak()} day streak!
+                    </p>
+                    <div className="text-sm text-gray-500">
+                      Keep up the great work! 🚀
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Time Setting Popup Modal */}
+              {showTimePopup && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-2xl shadow-2xl p-6 w-96 max-w-sm mx-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-xl font-bold text-gray-900 flex items-center">
+                        <Timer className="w-6 h-6 mr-2 text-orange-500" />
+                        Set Timer Duration
+                      </h3>
+                      <button
+                        onClick={closeTimePopup}
+                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        <X className="w-6 h-6" />
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <div className="text-center">
+                        <p className="text-sm text-gray-600 mb-4">Set your custom timer duration</p>
+                      </div>
+                      
+                      <div className="flex items-center justify-center space-x-4">
+                        <div className="text-center">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Minutes</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            value={customMinutes}
+                            onChange={(e) => setCustomMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                            className="w-20 px-3 py-2 border-2 border-orange-300 rounded-lg text-center font-bold text-orange-700 focus:border-orange-500 focus:outline-none"
+                          />
+                        </div>
+                        
+                        <div className="text-2xl font-bold text-gray-400">:</div>
+                        
+                        <div className="text-center">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Seconds</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            value={customSeconds}
+                            onChange={(e) => setCustomSeconds(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                            className="w-20 px-3 py-2 border-2 border-orange-300 rounded-lg text-center font-bold text-orange-700 focus:border-orange-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="text-center">
+                        <p className="text-sm text-gray-500">
+                          Total: {customMinutes}m {customSeconds}s
+                        </p>
+                      </div>
+                      
+                      <div className="flex space-x-3">
+                        <button
+                          onClick={closeTimePopup}
+                          className="flex-1 py-2 px-4 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg font-medium transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={applyCustomTime}
+                          disabled={customMinutes === 0 && customSeconds === 0}
+                          className="flex-1 py-2 px-4 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Storage Usage */}
+              <div className="lg:col-span-3">
+                <div className="bg-white rounded-2xl shadow-md p-6 hover:shadow-lg hover:border-orange-400 border border-gray-200 transition-all duration-300 h-64 flex flex-col">
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center mb-4">
+                    <HardDrive className="w-5 h-5 mr-2 text-orange-500" />
+                    Storage Usage
+                  </h2>
+                  <div className="flex-1 flex flex-col justify-center items-center">
+                    <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center mb-4">
+                      <span className="text-2xl font-bold text-orange-600">{storageInfo.percentage}%</span>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2 text-center">
+                      {formatFileSize(storageInfo.used * 1024 * 1024)} / {formatFileSize(storageInfo.limit * 1024 * 1024)}
+                    </p>
+                    <div className="w-full">
+                      <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div 
+                          className="bg-orange-500 h-3 rounded-full transition-all duration-300"
+                          style={{ width: `${storageInfo.percentage}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+        </div>
+
+            {/* Row 5: Weekly Summary (6) + Academic Overview (6) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+              {/* Weekly Summary */}
+              <div className="lg:col-span-6">
+                <div className="bg-white rounded-2xl shadow-md p-6 hover:shadow-lg hover:border-orange-400 border border-gray-200 transition-all duration-300 h-64 flex flex-col">
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center mb-4">
+                    <Activity className="w-5 h-5 mr-2 text-orange-500" />
+                    Weekly Summary
+                  </h2>
+                  <div className="grid grid-cols-2 gap-4 flex-1 overflow-y-auto max-h-40">
+                    <div className="text-center p-3 bg-green-50 rounded-lg flex flex-col justify-center">
+                      <p className="text-2xl font-bold text-green-600">8</p>
+                      <p className="text-xs text-gray-600">Completed</p>
+                    </div>
+                    <div className="text-center p-3 bg-blue-50 rounded-lg flex flex-col justify-center">
+                      <p className="text-2xl font-bold text-blue-600">32h</p>
+                      <p className="text-xs text-gray-600">Study Hours</p>
+                    </div>
+                    <div className="text-center p-3 bg-purple-50 rounded-lg flex flex-col justify-center">
+                      <p className="text-2xl font-bold text-purple-600">2</p>
+                      <p className="text-xs text-gray-600">Exams Taken</p>
+                    </div>
+                    <div className="text-center p-3 bg-orange-50 rounded-lg flex flex-col justify-center">
+                      <p className="text-2xl font-bold text-orange-600">85%</p>
+                      <p className="text-xs text-gray-600">Average Grade</p>
+                    </div>
+                  </div>
+                </div>
+        </div>
+
+              {/* Academic Overview */}
+              <div className="lg:col-span-6">
+                <div className="bg-white rounded-2xl shadow-md p-6 hover:shadow-lg hover:border-orange-400 border border-gray-200 transition-all duration-300 h-64 flex flex-col">
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center mb-4">
+                    <Award className="w-5 h-5 mr-2 text-orange-500" />
+                    Academic Overview
+                  </h2>
+                  <div className="space-y-4 flex-1 overflow-y-auto">
+                    {subjects.map((subject) => {
+                      const subjectAssignments = assignments.filter(a => a.subjectId === subject.id);
+                      const completed = subjectAssignments.filter(a => a.status === 'completed').length;
+                      const total = subjectAssignments.length;
+                      const percentage = total > 0 ? (completed / total) * 100 : 0;
+                      
+                      return (
+                        <div key={subject.id} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-900">{subject.name}</span>
+                            <span className="text-sm text-gray-600">{completed}/{total}</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-orange-500 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${percentage}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Row 6: Notifications (12) */}
+            <div className="grid grid-cols-1 gap-6">
+              <div className="col-span-full">
+                <div className="bg-white rounded-2xl shadow-md p-6 hover:shadow-lg hover:border-orange-400 border border-gray-200 transition-all duration-300 h-64 flex flex-col">
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center mb-4">
+                    <Bell className="w-5 h-5 mr-2 text-orange-500" />
+                    Notifications
+                  </h2>
+                  <div className="space-y-3 flex-1 overflow-y-auto">
+                    {notifications.slice(0, 6).map((notification) => (
+                      <div key={notification.id} className={`p-3 rounded-lg border-l-4 ${
+                        !notification.isRead 
+                          ? 'bg-orange-50 border-orange-400' 
+                          : 'bg-gray-50 border-gray-300'
+                      }`}>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <p className="font-medium text-gray-900">{notification.title}</p>
+                            <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
+                            <p className="text-xs text-gray-500 mt-2">{notification.createdAt.toLocaleDateString()}</p>
+                          </div>
+                          {!notification.isRead && (
+                            <div className="w-2 h-2 bg-orange-500 rounded-full ml-2 mt-1"></div>
+                          )}
+                        </div>
               </div>
             ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           </div>
       </div>
     );
@@ -1572,20 +2493,47 @@ const StudentDashboard: React.FC = () => {
 
     if (c.id === 'next-exam' && nextExam) {
       return (
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-8 rounded-xl h-full flex flex-col justify-between shadow-lg">
-          <div className="flex items-start justify-between mb-6">
-            <div className="flex-1">
-              <h2 className="text-2xl font-bold mb-3">📚 Next Exam</h2>
-              <p className="text-blue-100 text-base mb-2">{nextExam.subjectName}</p>
-              <p className="text-blue-200 text-sm mb-1">{nextExam.examDate.toLocaleDateString()}</p>
-              <p className="text-blue-200 text-sm">{nextExam.startTime} - {nextExam.endTime}</p>
-            </div>
-            <div className="text-right ml-6">
-              <div className="text-4xl font-bold">{daysUntilExam}</div>
-              <div className="text-blue-100 text-sm">days left</div>
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-6 rounded-xl h-full flex flex-col justify-center shadow-lg">
+          <div className="text-center mb-6">
+            <h2 className="text-xl font-bold mb-4 flex items-center justify-center">
+              <span className="mr-2">📚</span>
+              Next Exam
+            </h2>
+            
+            {/* Days Left Circle */}
+            <div className="relative mb-4">
+              <div className="w-20 h-20 mx-auto bg-white bg-opacity-20 rounded-full flex items-center justify-center shadow-lg border-2 border-white border-opacity-30">
+                <div className="text-center">
+                  <div className="text-2xl font-bold">{daysUntilExam}</div>
+                  <div className="text-xs font-medium">days</div>
+                </div>
+              </div>
+              <div className="absolute -top-1 -right-1 w-6 h-6 bg-white bg-opacity-90 rounded-full flex items-center justify-center">
+                <span className="text-blue-600 text-xs">📚</span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center justify-between">
+          
+          {/* Exam Details */}
+          <div className="bg-white bg-opacity-10 rounded-lg p-4 backdrop-blur-sm">
+            <p className="font-bold text-lg mb-2 leading-tight" title={nextExam.subjectName}>
+              {nextExam.subjectName}
+            </p>
+            <p className="text-blue-100 text-sm mb-2 font-medium">
+              {nextExam.examDate.toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}
+            </p>
+            <div className="flex items-center justify-center space-x-2">
+              <span className="text-blue-200 text-sm">⏰</span>
+              <span className="text-blue-100 text-sm font-medium">{nextExam.startTime} - {nextExam.endTime}</span>
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-between mt-4">
             <span className="px-4 py-2 rounded-full text-sm font-semibold bg-white bg-opacity-20 text-white">
               {nextExam.examType.toUpperCase()}
             </span>
@@ -1780,7 +2728,7 @@ const StudentDashboard: React.FC = () => {
               {unreadCount} unread
             </span>
           </div>
-          <div className="flex-1 space-y-3 overflow-y-auto max-h-64">
+          <div className="flex-1 space-y-3 overflow-y-auto max-h-64 pr-2">
             {notifications.slice(0, 5).map((n) => (
               <div 
                 key={n.id} 
@@ -1805,7 +2753,7 @@ const StudentDashboard: React.FC = () => {
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center">
                   <BellIcon className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">No notifications</p>
+              <p className="text-sm text-gray-500">No notifications</p>
                 </div>
               </div>
             )}
@@ -1892,7 +2840,7 @@ const StudentDashboard: React.FC = () => {
             <ClockIcon className="w-6 h-6 mr-2 text-red-600" />
             Upcoming Deadlines
           </h3>
-          <div className="flex-1 space-y-3 overflow-y-auto max-h-64">
+          <div className="flex-1 space-y-3 overflow-y-auto max-h-64 pr-2">
             {upcomingDeadlines.map((item, index) => {
               const isAssignment = 'deadline' in item;
               const daysLeft = Math.ceil(((isAssignment ? item.deadline : item.examDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -1954,7 +2902,7 @@ const StudentDashboard: React.FC = () => {
         }
         const dayDiff = Math.ceil((current.examDate.getTime() - previous.examDate.getTime()) / (1000 * 60 * 60 * 24));
         return { type: 'days', label: `Gap: ${dayDiff} days` } as const;
-      };
+  };
 
   return (
         <div className="h-full flex flex-col p-6 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg shadow-lg">
@@ -1962,7 +2910,7 @@ const StudentDashboard: React.FC = () => {
             <BookOpenIcon className="w-6 h-6 mr-2 text-purple-600" />
             Upcoming Exams
           </h3>
-          <div className="flex-1 space-y-4 overflow-y-auto max-h-80">
+          <div className="flex-1 space-y-4 overflow-y-auto max-h-80 pr-2">
             {upcomingExams.map((exam, index) => {
               const daysLeft = Math.ceil((exam.examDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
               const gap = calculateGap(index);
@@ -2023,15 +2971,15 @@ const StudentDashboard: React.FC = () => {
       };
 
   return (
-        <div className="h-full flex flex-col p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg shadow-lg">
+        <div className="h-full flex flex-col p-6 bg-gradient-to-br from-white to-orange-50 rounded-lg shadow-lg border-2 border-orange-200">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-semibold text-gray-900 flex items-center">
-              <ClockIcon className="w-6 h-6 mr-2 text-blue-600" />
+              <Timer className="w-6 h-6 mr-2 text-orange-500" />
               Pomodoro Timer
             </h3>
             <button
               onClick={() => setIsPomodoroMinimized(!isPomodoroMinimized)}
-              className="p-1 hover:bg-gray-200 rounded transition-colors"
+              className="p-1 hover:bg-orange-100 rounded transition-colors text-orange-600"
             >
               {isPomodoroMinimized ? '🔽' : '🔼'}
             </button>
@@ -2041,11 +2989,11 @@ const StudentDashboard: React.FC = () => {
               <div className="text-center">
                 <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-2 transition-all duration-300 ${
                   isPomodoroRunning 
-                    ? 'bg-gradient-to-r from-green-100 to-emerald-100 ring-2 ring-green-200 animate-pulse' 
-                    : 'bg-gradient-to-r from-blue-100 to-indigo-100'
+                    ? 'bg-gradient-to-r from-orange-200 to-orange-300 ring-2 ring-orange-400 animate-pulse' 
+                    : 'bg-gradient-to-r from-orange-100 to-orange-200'
                 }`}>
                   <span className={`text-lg font-bold transition-colors duration-300 ${
-                    isPomodoroRunning ? 'text-green-600' : 'text-blue-600'
+                    isPomodoroRunning ? 'text-orange-700' : 'text-orange-600'
                   }`}>
                     {formatTime(pomodoroTime)}
                   </span>
@@ -2055,74 +3003,108 @@ const StudentDashboard: React.FC = () => {
                     onClick={handleStart}
                     className={`px-3 py-1 rounded text-xs font-medium transition-all duration-300 ${
                       isPomodoroRunning 
-                        ? 'bg-red-600 hover:bg-red-700 text-white' 
-                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                        ? 'bg-orange-600 hover:bg-orange-700 text-white' 
+                        : 'bg-orange-500 hover:bg-orange-600 text-white'
                     }`}
                   >
                     {isPomodoroRunning ? 'Pause' : 'Start'}
                   </button>
                   <button 
                     onClick={handleReset}
-                    className="px-3 py-1 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded text-xs font-medium transition-colors duration-300"
+                    className="px-3 py-1 bg-orange-400 hover:bg-orange-500 text-white rounded text-xs font-medium transition-colors duration-300"
                   >
                     Reset
                   </button>
                 </div>
               </div>
-              <button
-                onClick={handleRefreshAi}
-                disabled={isAiGenerating}
-                className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                  isAiGenerating
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'
-                }`}
-                title="Refresh AI suggestions"
-              >
-                {isAiGenerating ? 'Refreshing…' : 'Refresh'}
-              </button>
             </div>
           ) : (
             <div className="flex-1 flex flex-col justify-center space-y-4">
-              <div className="text-center">
-                <div className={`w-32 h-32 mx-auto rounded-full flex items-center justify-center mb-4 transition-all duration-300 ${
-                  isPomodoroRunning 
-                    ? 'bg-gradient-to-r from-green-100 to-emerald-100 ring-4 ring-green-200 animate-pulse' 
-                    : 'bg-gradient-to-r from-blue-100 to-indigo-100'
-                }`}>
-                  <span className={`text-2xl font-bold transition-colors duration-300 ${
-                    isPomodoroRunning ? 'text-green-600' : 'text-blue-600'
-                  }`}>
-                    {formatTime(pomodoroTime)}
-                  </span>
+              {/* Circular Timer with Progress */}
+              <div className="flex items-center justify-center relative">
+                <div className="relative">
+                  {/* Outer Progress Ring */}
+                  <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 120 120">
+                    {/* Background Circle */}
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="50"
+                      stroke="#f3f4f6"
+                      strokeWidth="8"
+                      fill="none"
+                    />
+                    {/* Progress Circle */}
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="50"
+                      stroke="url(#gradient2)"
+                      strokeWidth="8"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeDasharray={`${2 * Math.PI * 50}`}
+                      strokeDashoffset={`${2 * Math.PI * 50 * (1 - ((pomodoroTime - (pomodoroTime % 60)) / pomodoroTime))}`}
+                      className="transition-all duration-1000 ease-in-out"
+                    />
+                    <defs>
+                      <linearGradient id="gradient2" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#f97316" />
+                        <stop offset="100%" stopColor="#ea580c" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  
+                  {/* Timer Display */}
+                  <div 
+                    className={`absolute inset-0 flex items-center justify-center cursor-pointer transition-all duration-300 ${
+                      isPomodoroRunning 
+                        ? 'animate-pulse' 
+                        : 'hover:scale-105'
+                    }`}
+                    onClick={openTimePopup}
+                    title={isPomodoroRunning ? "Timer is running" : "Click to set custom time"}
+                  >
+                    <div className="text-center">
+                      <div className="text-xs text-orange-700 font-medium mb-1">TIMER</div>
+                      <div className="text-xl font-bold text-orange-800">
+                        {formatTime(pomodoroTime)}
+                      </div>
+                      <div className="text-xs text-orange-600 mt-1">M:S</div>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-sm text-gray-600">
-                  {isPomodoroRunning ? 'Focus Session Active' : 'Ready to Focus'}
-                </p>
               </div>
+              
+              <p className="text-sm text-gray-600 text-center">
+                {isPomodoroRunning ? 'Focus Session Active' : 'Click timer to change time'}
+              </p>
+              
+              {/* Bottom Control Buttons */}
               <div className="flex space-x-2">
                 <button 
                   onClick={handleStart}
                   className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all duration-300 ${
                     isPomodoroRunning 
-                      ? 'bg-red-600 hover:bg-red-700 text-white' 
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      ? 'bg-orange-600 hover:bg-orange-700 text-white' 
+                      : 'bg-orange-500 hover:bg-orange-600 text-white'
                   }`}
                 >
                   {isPomodoroRunning ? 'Pause' : 'Start'}
                 </button>
                 <button 
                   onClick={handleReset}
-                  className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 py-2 px-4 rounded-lg text-sm font-medium transition-colors duration-300"
+                  className="flex-1 bg-orange-400 hover:bg-orange-500 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors duration-300"
                 >
                   Reset
                 </button>
               </div>
+              
               <div className="text-center">
                 <p className="text-xs text-gray-500">Sessions today: {pomodoroSessions.length}</p>
                 {isPomodoroRunning && (
                   <div className="mt-2 flex justify-center">
-                    <div className="w-2 h-2 bg-green-400 rounded-full animate-ping"></div>
+                    <div className="w-2 h-2 bg-orange-400 rounded-full animate-ping"></div>
                   </div>
                 )}
               </div>
@@ -2133,25 +3115,50 @@ const StudentDashboard: React.FC = () => {
     }
 
     if (c.id === 'streak-tracker') {
-      const assignmentStreak = streaks.find(s => s.type === 'assignments');
+      const currentStreak = getCurrentStreak();
+      const longestStreak = getLongestStreak();
+      
       return (
         <div className="card h-full flex flex-col p-6">
-          <h3 className="text-xl font-semibold text-gray-900 mb-4">Streak Tracker</h3>
+          <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+            <span className="mr-2">🔥</span>
+            Streak Tracker
+          </h3>
           <div className="flex-1 flex flex-col justify-center space-y-4">
-            <div className="text-center">
-              <p className="text-3xl font-bold text-orange-600">{assignmentStreak?.currentStreak || 0}</p>
-              <p className="text-sm text-gray-600">Day Streak</p>
-            </div>
-            <div className="space-y-2">
-              {streaks.map((streak) => (
-                <div key={streak.type} className="flex justify-between text-sm">
-                  <span className="capitalize">{streak.type}</span>
-                  <span className="font-medium">{streak.currentStreak} days</span>
+            <div className="text-center relative">
+              <div className={`text-4xl font-bold text-orange-600 transition-all duration-500 ${
+                showStreakAnimation ? 'scale-150 animate-bounce' : 'scale-100'
+              }`}>
+                {currentStreak}
+              </div>
+              <p className="text-sm text-gray-600 mt-2">Current Streak</p>
+              {showStreakAnimation && (
+                <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full animate-pulse">
+                  +{streakIncrement}
                 </div>
-              ))}
+              )}
             </div>
+            
+            <div className="bg-orange-50 rounded-lg p-3 text-center">
+              <p className="text-sm text-gray-600">Longest</p>
+              <p className="text-lg font-bold text-orange-700">{longestStreak} days</p>
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>📚 Study Streak</span>
+                <span className="font-medium">{currentStreak} days</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>📅 Login Streak</span>
+                <span className="font-medium">{currentStreak} days</span>
+              </div>
+            </div>
+            
             <div className="text-center">
-              <p className="text-xs text-gray-500">Keep it up! 🔥</p>
+              <p className="text-xs text-gray-500">
+                {currentStreak > 0 ? "Keep it up! 🔥" : "Start your streak today! 🚀"}
+              </p>
             </div>
           </div>
         </div>
@@ -2162,7 +3169,7 @@ const StudentDashboard: React.FC = () => {
       return (
         <div className="card h-full flex flex-col p-6">
           <h3 className="text-xl font-semibold text-gray-900 mb-4">Weekly Summary</h3>
-          <div className="flex-1 space-y-4">
+          <div className="flex-1 space-y-4 overflow-y-auto max-h-64">
             <div className="text-center">
               <p className="text-sm text-gray-600 mb-2">{weeklySummary.week}</p>
             </div>
@@ -2365,17 +3372,78 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
         </div>
       </div>
 
-      {/* Priority Filter */}
-      <div className="flex space-x-2">
-        {([['all','All'], ['high','High Priority'], ['medium','Medium Priority'], ['low','Low Priority']] as const).map(([key,label]) => (
+      {/* Filters and Sorting */}
+      <div className="space-y-4">
+        {/* Priority Filter */}
+        <div className="flex flex-wrap gap-2">
+          <span className="text-sm font-medium text-gray-700 self-center">Priority:</span>
+          {([['all','All'], ['high','High Priority'], ['medium','Medium Priority'], ['low','Low Priority']] as const).map(([key,label]) => (
+            <button
+              key={key}
+              onClick={() => setAssignmentFilter(key)}
+              className={`px-3 py-1 rounded-lg text-sm font-medium ${assignmentFilter === key ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Subject Filter */}
+        <div className="flex flex-wrap gap-2">
+          <span className="text-sm font-medium text-gray-700 self-center">Subject:</span>
           <button
-            key={key}
-            onClick={() => setAssignmentFilter(key)}
-            className={`px-4 py-2 rounded-lg font-medium ${assignmentFilter === key ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700'}`}
+            onClick={() => setSubjectFilter('all')}
+            className={`px-3 py-1 rounded-lg text-sm font-medium ${subjectFilter === 'all' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
           >
-            {label}
-        </button>
-        ))}
+            All Subjects
+          </button>
+          {subjects.map((subject) => (
+            <button
+              key={subject.id}
+              onClick={() => setSubjectFilter(subject.id)}
+              className={`px-3 py-1 rounded-lg text-sm font-medium ${subjectFilter === subject.id ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            >
+              {subject.name}
+            </button>
+          ))}
+        </div>
+
+        {/* Status Filter */}
+        <div className="flex flex-wrap gap-2">
+          <span className="text-sm font-medium text-gray-700 self-center">Status:</span>
+          {([['all','All'], ['pending','Pending'], ['completed','Completed']] as const).map(([key,label]) => (
+            <button
+              key={key}
+              onClick={() => setStatusFilter(key)}
+              className={`px-3 py-1 rounded-lg text-sm font-medium ${statusFilter === key ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Sort Options */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-sm font-medium text-gray-700">Sort by:</span>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as any)}
+            className="px-3 py-1 rounded-lg border border-gray-300 text-sm focus:ring-2 focus:ring-primary focus:border-transparent"
+          >
+            <option value="deadline">Deadline</option>
+            <option value="subject">Subject</option>
+            <option value="priority">Priority</option>
+            <option value="status">Status</option>
+            <option value="title">Title</option>
+          </select>
+          <button
+            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+            className="px-3 py-1 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 text-sm font-medium flex items-center space-x-1"
+          >
+            <span>{sortOrder === 'asc' ? '↑' : '↓'}</span>
+            <span>{sortOrder === 'asc' ? 'Ascending' : 'Descending'}</span>
+          </button>
+        </div>
       </div>
 
       <div className="card">
@@ -2408,16 +3476,44 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
             </thead>
             <tbody>
               {assignments
-                .filter(a => assignmentFilter === 'all' ? true : a.priority === assignmentFilter)
+                .filter(a => {
+                  // Priority filter
+                  const priorityMatch = assignmentFilter === 'all' ? true : a.priority === assignmentFilter;
+                  // Subject filter
+                  const subjectMatch = subjectFilter === 'all' ? true : a.subjectId === subjectFilter;
+                  // Status filter
+                  const statusMatch = statusFilter === 'all' ? true : a.status === statusFilter;
+                  return priorityMatch && subjectMatch && statusMatch;
+                })
                 .slice()
                 .sort((a, b) => {
-                  // Pending first, then by earliest deadline
-                  const aCompleted = a.status === 'completed' ? 1 : 0;
-                  const bCompleted = b.status === 'completed' ? 1 : 0;
-                  if (aCompleted !== bCompleted) return aCompleted - bCompleted;
-                  const aTime = a.deadline ? a.deadline.getTime() : Number.MAX_SAFE_INTEGER;
-                  const bTime = b.deadline ? b.deadline.getTime() : Number.MAX_SAFE_INTEGER;
-                  return aTime - bTime;
+                  let comparison = 0;
+                  
+                  switch (sortBy) {
+                    case 'deadline':
+                      const aTime = a.deadline ? a.deadline.getTime() : Number.MAX_SAFE_INTEGER;
+                      const bTime = b.deadline ? b.deadline.getTime() : Number.MAX_SAFE_INTEGER;
+                      comparison = aTime - bTime;
+                      break;
+                    case 'subject':
+                      comparison = a.subjectName.localeCompare(b.subjectName);
+                      break;
+                    case 'priority':
+                      const priorityOrder = { high: 0, medium: 1, low: 2 };
+                      comparison = priorityOrder[a.priority] - priorityOrder[b.priority];
+                      break;
+                    case 'status':
+                      const statusOrder = { pending: 0, completed: 1 };
+                      comparison = statusOrder[a.status] - statusOrder[b.status];
+                      break;
+                    case 'title':
+                      comparison = a.title.localeCompare(b.title);
+                      break;
+                    default:
+                      comparison = 0;
+                  }
+                  
+                  return sortOrder === 'asc' ? comparison : -comparison;
                 })
                 .map((assignment) => (
                 <tr
@@ -2469,25 +3565,37 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                       : 'N/A'}
                   </td>
                   <td className="py-4 px-4">
-                    <div className="flex space-x-2">
+                    <div className="flex flex-wrap gap-2">
                       {assignment.pdfUrl ? (
                         <button 
                           onClick={() => window.open(assignment.pdfUrl, '_blank')}
-                          className="text-primary hover:text-orange-600 text-sm font-medium"
+                          className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200 transition-colors"
                         >
                           View PDF
-                      </button>
+                        </button>
                       ) : (
-                        <span className="text-gray-400 text-sm">No PDF</span>
+                        <span className="text-gray-400 text-xs">No PDF</span>
                       )}
+                      <button
+                        onClick={() => handleEditAssignment(assignment)}
+                        className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200 transition-colors"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDuplicateAssignment(assignment)}
+                        className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium hover:bg-green-200 transition-colors"
+                      >
+                        Duplicate
+                      </button>
                       <button
                         onClick={() =>
                           handleToggleAssignmentStatus(assignment.id)
                         }
-                        className={`text-sm font-medium ${
+                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                           assignment.status === 'pending'
-                            ? 'text-green-600 hover:text-green-700'
-                            : 'text-yellow-600 hover:text-yellow-700'
+                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                            : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
                         }`}
                       >
                         {assignment.status === 'pending'
@@ -2496,7 +3604,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                       </button>
                       <button
                         onClick={() => handleDeleteAssignment(assignment.id)}
-                        className="text-red-600 hover:text-red-700 text-sm font-medium"
+                        className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium hover:bg-red-200 transition-colors"
                       >
                         Delete
                       </button>
@@ -2511,82 +3619,181 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
     </div>
   );
 
-  const renderExams = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Exams</h1>
-        <div className="flex space-x-3">
-          <button
-            onClick={() => setShowExamModal(true)}
-            className="btn-primary flex items-center space-x-2"
-          >
-            <PlusIcon className="w-5 h-5" />
-            <span>Add Exam</span>
-          </button>
+  const renderExams = () => {
+    // Sort exams by date, then by time
+    const sortedExams = exams.sort((a, b) => {
+      const aDate = new Date(a.examDate.getFullYear(), a.examDate.getMonth(), a.examDate.getDate()).getTime();
+      const bDate = new Date(b.examDate.getFullYear(), b.examDate.getMonth(), b.examDate.getDate()).getTime();
+      if (aDate !== bDate) return aDate - bDate;
+      const [aH, aM] = (a.startTime || '00:00').split(':').map(Number);
+      const [bH, bM] = (b.startTime || '00:00').split(':').map(Number);
+      return aH !== bH ? aH - bH : aM - bM;
+    });
+
+    // Calculate gap between exams
+    const calculateGap = (currentIndex: number) => {
+      if (currentIndex === 0) return null;
+      const current = sortedExams[currentIndex];
+      const previous = sortedExams[currentIndex - 1];
+      const sameDay = current.examDate.toDateString() === previous.examDate.toDateString();
+      
+      if (sameDay) {
+        const [prevEndH, prevEndM] = (previous.endTime || '00:00').split(':').map(Number);
+        const [currStartH, currStartM] = (current.startTime || '00:00').split(':').map(Number);
+        const prevEnd = new Date(previous.examDate);
+        prevEnd.setHours(prevEndH, prevEndM, 0, 0);
+        const currStart = new Date(current.examDate);
+        currStart.setHours(currStartH, currStartM, 0, 0);
+        const diffMs = currStart.getTime() - prevEnd.getTime();
+        const hours = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60)));
+        const minutes = Math.max(0, Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60)));
+        return { type: 'hours', label: `${hours}h ${minutes}m gap` };
+      }
+      
+      const dayDiff = Math.ceil((current.examDate.getTime() - previous.examDate.getTime()) / (1000 * 60 * 60 * 24));
+      return { type: 'days', label: `${dayDiff}d gap` };
+    };
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-gray-900">Exams</h1>
+          <div className="flex space-x-3">
+            <button
+              onClick={() => setShowExamModal(true)}
+              className="btn-primary flex items-center space-x-2"
+            >
+              <PlusIcon className="w-5 h-5" />
+              <span>Add Exam</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {sortedExams.map((exam, index) => {
+            const daysUntil = Math.ceil(
+              (exam.examDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+            );
+            const isPast = exam.examDate < new Date();
+            const gap = calculateGap(index);
+
+            return (
+              <div key={exam.id} className="space-y-3">
+                {gap && (
+                  <div className="text-center">
+                    <div className="inline-flex items-center px-4 py-2 bg-blue-100 rounded-full">
+                      <span className="text-sm text-blue-600 font-medium">{gap.label}</span>
+                    </div>
+                  </div>
+                )}
+                <div className="bg-white rounded-xl shadow-lg border border-gray-200 hover:shadow-xl hover:border-blue-300 transition-all duration-300 p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">
+                        {exam.subjectName}
+                      </h3>
+                      <div className="flex items-center space-x-4 text-sm text-gray-600">
+                        <div className="flex items-center space-x-1">
+                          <span className="text-blue-500">📅</span>
+                          <span>{exam.examDate.toLocaleDateString('en-US', { 
+                            weekday: 'long', 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                          })}</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <span className="text-blue-500">⏰</span>
+                          <span>{exam.startTime} - {exam.endTime}</span>
+                        </div>
+                        {exam.room && (
+                          <div className="flex items-center space-x-1">
+                            <span className="text-blue-500">🏢</span>
+                            <span>{exam.room}</span>
+                          </div>
+                        )}
+                      </div>
+                      {exam.notes && (
+                        <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                          <p className="text-sm text-gray-700">
+                            <strong>Notes:</strong> {exam.notes}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right ml-4">
+                      <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+                        isPast 
+                          ? 'bg-gray-100' 
+                          : daysUntil <= 7 
+                            ? 'bg-red-100' 
+                            : daysUntil <= 14 
+                              ? 'bg-yellow-100' 
+                              : 'bg-green-100'
+                      }`}>
+                        <span className={`text-lg font-bold ${
+                          isPast 
+                            ? 'text-gray-600' 
+                            : daysUntil <= 7 
+                              ? 'text-red-600' 
+                              : daysUntil <= 14 
+                                ? 'text-yellow-600' 
+                                : 'text-green-600'
+                        }`}>
+                          {isPast ? '✓' : daysUntil}
+                        </span>
+                      </div>
+                      <p className={`text-xs mt-1 font-medium ${
+                        isPast 
+                          ? 'text-gray-500' 
+                          : daysUntil <= 7 
+                            ? 'text-red-500' 
+                            : daysUntil <= 14 
+                              ? 'text-yellow-500' 
+                              : 'text-green-500'
+                      }`}>
+                        {isPast ? 'Completed' : daysUntil === 1 ? 'day left' : 'days left'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex space-x-3">
+                    <button 
+                      onClick={() => handleEditExam(exam)}
+                      className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteExam(exam.id)}
+                      className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {exams.length === 0 && (
+            <div className="text-center py-12">
+              <div className="w-24 h-24 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <span className="text-4xl text-gray-400">📚</span>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No exams scheduled</h3>
+              <p className="text-gray-500 mb-4">Add your first exam to get started</p>
+              <button
+                onClick={() => setShowExamModal(true)}
+                className="btn-primary flex items-center space-x-2 mx-auto"
+              >
+                <PlusIcon className="w-5 h-5" />
+                <span>Add Exam</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {exams.map((exam) => {
-          const daysUntil = Math.ceil(
-            (exam.examDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-          );
-          const isPast = exam.examDate < new Date();
-
-          return (
-            <div key={exam.id} className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {exam.subjectName}
-                </h3>
-                <span
-                  className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                    isPast
-                      ? 'bg-gray-100 text-gray-800'
-                      : 'bg-blue-100 text-blue-800'
-                  }`}
-                >
-                  {isPast ? 'Completed' : `${daysUntil} days`}
-                </span>
-              </div>
-              <div className="space-y-2 text-sm text-gray-600">
-                <p>
-                  <strong>Date:</strong> {exam.examDate.toLocaleDateString()}
-                </p>
-                <p>
-                  <strong>Time:</strong> {exam.startTime} - {exam.endTime}
-                </p>
-                {exam.room && (
-                  <p>
-                    <strong>Room:</strong> {exam.room}
-                  </p>
-                )}
-                {exam.notes && (
-                  <p>
-                    <strong>Notes:</strong> {exam.notes}
-                  </p>
-                )}
-              </div>
-              <div className="mt-4 flex space-x-2">
-                <button 
-                  onClick={() => handleEditExam(exam)}
-                  className="text-primary hover:text-orange-600 text-sm font-medium"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDeleteExam(exam.id)}
-                  className="text-red-600 hover:text-red-700 text-sm font-medium"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+    );
+  };
 
   const renderSubjects = () => (
     <div className="space-y-6">
@@ -2710,7 +3917,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">
               Files by Size (Max to Low)
-            </h3>
+          </h3>
             <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
               {assignments.filter(a => a.fileSize && a.fileSize > 0).length} files
             </span>
@@ -2725,8 +3932,8 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
           ) : (
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {getSortedAssignmentsBySize().map((assignment) => (
-                <div
-                  key={assignment.id}
+              <div
+                key={assignment.id}
                   className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   <div className="flex-1 min-w-0">
@@ -2738,18 +3945,18 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 truncate">
-                          {assignment.title}
-                        </p>
+                    {assignment.title}
+                  </p>
                         <p className="text-sm text-gray-600 truncate">
                           {assignment.subjectName} • {assignment.deadline.toLocaleDateString()}
-                        </p>
-                      </div>
+                  </p>
+                </div>
                     </div>
                   </div>
                   <div className="flex items-center space-x-3">
                                          <span className="text-sm font-semibold text-gray-700">
                        {formatFileSize((assignment.fileSize || 0) * 1024 * 1024)}
-                     </span>
+                </span>
                     <button
                       onClick={() => handleDeleteAssignmentFile(assignment.id)}
                       className="text-red-600 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors"
@@ -2760,9 +3967,9 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                       </svg>
                     </button>
                   </div>
-                </div>
-              ))}
-            </div>
+              </div>
+            ))}
+          </div>
           )}
         </div>
       </div>
@@ -2827,7 +4034,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <h1 className="text-3xl font-bold text-gray-900">Notifications</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Notifications</h1>
           {getUnreadNotificationCount() > 0 && (
             <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-semibold">
               {getUnreadNotificationCount()} unread
@@ -2853,48 +4060,48 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
           </div>
         ) : (
           notifications.map((notification) => (
-            <div
-              key={notification.id}
-              className={`card ${
+          <div
+            key={notification.id}
+            className={`card ${
                 !notification.isRead ? 'border-l-4 border-primary bg-blue-50' : ''
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
+            }`}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
                   <div className="flex items-center space-x-2 mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {notification.title}
-                    </h3>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {notification.title}
+                </h3>
                     {!notification.isRead && (
                       <span className="bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
                         New
                       </span>
                     )}
                   </div>
-                  <p className="text-gray-600 mt-1">{notification.message}</p>
-                  <p className="text-xs text-gray-500 mt-2">
-                    {notification.createdAt.toLocaleDateString()} at{' '}
-                    {notification.createdAt.toLocaleTimeString()}
-                  </p>
-                </div>
-                <div className="flex space-x-2">
-                  {!notification.isRead && (
+                <p className="text-gray-600 mt-1">{notification.message}</p>
+                <p className="text-xs text-gray-500 mt-2">
+                  {notification.createdAt.toLocaleDateString()} at{' '}
+                  {notification.createdAt.toLocaleTimeString()}
+                </p>
+              </div>
+              <div className="flex space-x-2">
+                {!notification.isRead && (
                     <button 
                       onClick={() => handleMarkNotificationAsRead(notification.id)}
                       className="text-primary hover:text-orange-600 text-sm font-medium"
                     >
-                      Mark Read
-                    </button>
-                  )}
+                    Mark Read
+                  </button>
+                )}
                   <button 
                     onClick={() => handleDeleteNotification(notification.id)}
                     className="text-red-600 hover:text-red-700 text-sm font-medium"
                   >
-                    Delete
-                  </button>
-                </div>
+                  Delete
+                </button>
               </div>
             </div>
+          </div>
           ))
         )}
       </div>
@@ -3308,29 +4515,29 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Subject
                 </label>
-                                  <select
-                    className="input-field"
-                    value={assignmentForm.subjectId}
+                <select
+                  className="input-field"
+                  value={assignmentForm.subjectId}
                     onChange={(e) => {
                       if (e.target.value === 'add-new') {
                         setShowSubjectsModal(true);
                       } else {
-                        setAssignmentForm({
-                          ...assignmentForm,
-                          subjectId: e.target.value,
+                    setAssignmentForm({
+                      ...assignmentForm,
+                      subjectId: e.target.value,
                         });
-                      }
+                  }
                     }}
-                    required
-                  >
-                    <option value="">Select Subject</option>
-                    {subjects.map((subject) => (
-                      <option key={subject.id} value={subject.id}>
-                        {subject.name}
-                      </option>
-                    ))}
+                  required
+                >
+                  <option value="">Select Subject</option>
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </option>
+                  ))}
                     <option value="add-new">+ Add New Subject</option>
-                  </select>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -4075,7 +5282,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
       )}
 
       {/* Custom Notification */}
-      {showNotification && (
+      {showCustomNotification && (
         <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-right duration-300">
           <div className={`rounded-lg shadow-lg p-4 max-w-sm ${
             notificationType === 'success' ? 'bg-green-500 text-white' :
@@ -4104,13 +5311,13 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                   </svg>
-                )}
-              </div>
+      )}
+    </div>
               <div className="flex-1">
                 <p className="text-sm font-medium">{notificationMessage}</p>
               </div>
               <button
-                onClick={() => setShowNotification(false)}
+                onClick={() => setShowCustomNotification(false)}
                 className="flex-shrink-0 text-white hover:text-gray-200"
               >
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -4128,7 +5335,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
           <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
             <div className="fixed inset-0 transition-opacity" aria-hidden="true">
               <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
-            </div>
+        </div>
 
             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
               <div className={`px-4 pt-5 pb-4 sm:p-6 sm:pb-4 ${
@@ -4185,8 +5392,8 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                 >
                   {confirmModalData.cancelText}
                 </button>
-              </div>
-            </div>
+        </div>
+      </div>
           </div>
         </div>
       )}
