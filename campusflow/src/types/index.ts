@@ -67,6 +67,31 @@ export interface Material {
   createdAt: Date;
 }
 
+export interface StudyFolder {
+  id: string;
+  studentId: string;
+  name: string;
+  parentId?: string; // null for root folders (subjects)
+  subjectId?: string; // for subject folders
+  createdAt: Date;
+  color?: string;
+}
+
+export interface StudyFile {
+  id: string;
+  studentId: string;
+  name: string;
+  folderId: string;
+  subjectId: string;
+  subjectName: string;
+  fileUrl: string;
+  fileSize: number;
+  fileType: string;
+  description?: string;
+  createdAt: Date;
+  modifiedAt: Date;
+}
+
 export interface Notification {
   id: string;
   studentId: string;

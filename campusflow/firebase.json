@@ -4,6 +4,14 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
       {
+        "source": "/backup-manager.html",
+        "destination": "/backup-manager.html"
+      },
+      {
+        "source": "/backup-viewer.html",
+        "destination": "/backup-viewer.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { doc, setDoc, collection, addDoc, updateDoc, deleteDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { db, storage } from '../firebase/config';
+import CustomPopup from './CustomPopup';
 import {
   ClockIcon,
   UserIcon,
@@ -39,7 +41,22 @@ import {
   HardDrive,
   Activity,
   Award,
-  MessageSquare
+  MessageSquare,
+  Folder,
+  FolderOpen,
+  File,
+  Upload,
+  Download,
+  Trash2,
+  Edit,
+  ChevronLeft,
+  ChevronRight,
+  Grid3X3,
+  List,
+  Search,
+  MoreVertical,
+  Lock,
+  AlertTriangle
 } from 'lucide-react';
 import {
   Assignment,
@@ -47,6 +64,8 @@ import {
   StorageInfo,
   Subject,
   Material,
+  StudyFolder,
+  StudyFile,
   Notification as NotificationType,
   DashboardCard,
   SubjectProgress,
@@ -229,6 +248,82 @@ const StudentDashboard: React.FC = () => {
       createdAt: new Date(),
     },
   ]);
+
+  // File Manager States
+  const [studyFolders, setStudyFolders] = useState<StudyFolder[]>([
+    {
+      id: 'folder1',
+      studentId: '1',
+      name: 'Lecture Notes',
+      parentId: undefined,
+      subjectId: '1',
+      createdAt: new Date(),
+      color: '#ff6b35',
+    },
+    {
+      id: 'folder2',
+      studentId: '1',
+      name: 'Assignments',
+      parentId: undefined,
+      subjectId: '2',
+      createdAt: new Date(),
+      color: '#ff6b35',
+    },
+  ]);
+  const [studyFiles, setStudyFiles] = useState<StudyFile[]>([
+    {
+      id: 'file1',
+      studentId: '1',
+      name: 'Calculus Chapter 1.pdf',
+      folderId: '',
+      subjectId: '1',
+      subjectName: 'Mathematics',
+      fileUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+      fileSize: 2.5,
+      fileType: 'pdf',
+      description: 'Introduction to calculus concepts',
+      createdAt: new Date(),
+      modifiedAt: new Date(),
+    },
+    {
+      id: 'file2',
+      studentId: '1',
+      name: 'Physics Lab Report.docx',
+      folderId: '',
+      subjectId: '2',
+      subjectName: 'Physics',
+      fileUrl: 'https://www.africau.edu/images/default/sample.pdf',
+      fileSize: 1.8,
+      fileType: 'docx',
+      description: 'Lab report on mechanics',
+      createdAt: new Date(),
+      modifiedAt: new Date(),
+    },
+  ]);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [fileSortBy, setFileSortBy] = useState<'name' | 'date' | 'size'>('name');
+  const [fileSortOrder, setFileSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
+  const [showUploadFileModal, setShowUploadFileModal] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadFileName, setUploadFileName] = useState('');
+  const [uploadFileDescription, setUploadFileDescription] = useState('');
+  
+  // Context Menu States
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    item: { type: 'file' | 'folder', data: StudyFile | StudyFolder } | null;
+  }>({
+    visible: false,
+    x: 0,
+    y: 0,
+    item: null,
+  });
   const [notifications, setNotifications] = useState<NotificationType[]>([
     {
       id: '1',
@@ -251,6 +346,8 @@ const StudentDashboard: React.FC = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showEditExamModal, setShowEditExamModal] = useState(false);
   const [showSubjectsModal, setShowSubjectsModal] = useState(false);
+  const [showCustomAlert, setShowCustomAlert] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({ title: '', message: '', type: 'info' as 'success' | 'error' | 'warning' | 'info', onConfirm: () => {} });
   const [editingExam, setEditingExam] = useState<Exam | null>(null);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -644,7 +741,6 @@ const StudentDashboard: React.FC = () => {
       setCurrentQuote(newQuote);
       return newQuote;
     } catch (error) {
-      console.error('Error fetching motivational quote:', error);
       // Fallback to local quotes if API fails
       const fallbackQuote = motivationQuotes[Math.floor(Math.random() * motivationQuotes.length)];
       setCurrentQuote(fallbackQuote);
@@ -946,17 +1042,93 @@ const StudentDashboard: React.FC = () => {
       
       return unsubscribe;
     } catch (error) {
-      console.error('Error loading subjects:', error);
+      showCustomAlertPopup('Error', 'Failed to load subjects. Please refresh the page.', 'error');
+    }
+  }, [currentUser?.id]);
+
+  // Firebase functions for study files
+  const loadStudyFilesFromFirebase = useCallback(async () => {
+    if (!currentUser?.id) return;
+    
+    try {
+      const studyFilesQuery = query(
+        collection(db, 'studyFiles'),
+        where('studentId', '==', currentUser.id)
+      );
+      
+      const unsubscribe = onSnapshot(studyFilesQuery, (snapshot) => {
+        const studyFilesData: StudyFile[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          studyFilesData.push({
+            id: doc.id,
+            studentId: data.studentId,
+            name: data.name,
+            folderId: data.folderId,
+            subjectId: data.subjectId,
+            subjectName: data.subjectName,
+            fileUrl: data.fileUrl,
+            fileSize: data.fileSize,
+            fileType: data.fileType,
+            description: data.description,
+            createdAt: data.createdAt?.toDate() || new Date(),
+            modifiedAt: data.modifiedAt?.toDate() || new Date(),
+          });
+        });
+        setStudyFiles(studyFilesData);
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      showCustomAlertPopup('Error', 'Failed to load study files. Please refresh the page.', 'error');
+    }
+  }, [currentUser?.id]);
+
+  // Firebase functions for study folders
+  const loadStudyFoldersFromFirebase = useCallback(async () => {
+    if (!currentUser?.id) return;
+    
+    try {
+      const studyFoldersQuery = query(
+        collection(db, 'studyFolders'),
+        where('studentId', '==', currentUser.id)
+      );
+      
+      const unsubscribe = onSnapshot(studyFoldersQuery, (snapshot) => {
+        const studyFoldersData: StudyFolder[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          studyFoldersData.push({
+            id: doc.id,
+            studentId: data.studentId,
+            name: data.name,
+            parentId: data.parentId,
+            subjectId: data.subjectId,
+            createdAt: data.createdAt?.toDate() || new Date(),
+            color: data.color,
+          });
+        });
+        setStudyFolders(studyFoldersData);
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      showCustomAlertPopup('Error', 'Failed to load study folders. Please refresh the page.', 'error');
     }
   }, [currentUser?.id]);
 
   // Initialize data
   useEffect(() => {
     // Calculate storage usage
-    const totalSize = assignments.reduce(
+    const assignmentSize = assignments.reduce(
       (sum, assignment) => sum + (assignment.fileSize || 0),
       0
     );
+    const studyFileSize = studyFiles.reduce(
+      (sum, file) => sum + (file.fileSize || 0),
+      0
+    );
+    const totalSize = assignmentSize + studyFileSize;
     const percentage = (totalSize / storageInfo.limit) * 100;
     setStorageInfo({
       used: totalSize,
@@ -993,7 +1165,7 @@ const StudentDashboard: React.FC = () => {
       );
       setDaysUntilExam(days);
     }
-  }, [assignments, exams, storageInfo.limit]);
+  }, [assignments, exams, studyFiles, storageInfo.limit]);
 
   // Load subjects from Firebase
   useEffect(() => {
@@ -1006,6 +1178,30 @@ const StudentDashboard: React.FC = () => {
       };
     }
   }, [currentUser?.id, loadSubjectsFromFirebase]);
+
+  // Load study files from Firebase
+  useEffect(() => {
+    if (currentUser?.id) {
+      const unsubscribe = loadStudyFilesFromFirebase();
+      return () => {
+        if (unsubscribe) {
+          unsubscribe.then(unsub => unsub && unsub());
+        }
+      };
+    }
+  }, [currentUser?.id, loadStudyFilesFromFirebase]);
+
+  // Load study folders from Firebase
+  useEffect(() => {
+    if (currentUser?.id) {
+      const unsubscribe = loadStudyFoldersFromFirebase();
+      return () => {
+        if (unsubscribe) {
+          unsubscribe.then(unsub => unsub && unsub());
+        }
+      };
+    }
+  }, [currentUser?.id, loadStudyFoldersFromFirebase]);
 
   // Load assignments from Firebase
   useEffect(() => {
@@ -1107,11 +1303,11 @@ const StudentDashboard: React.FC = () => {
     try {
       await logout();
     } catch (error) {
-      console.error('Error logging out:', error);
+      showCustomAlertPopup('Error', 'Failed to log out. Please try again.', 'error');
     }
   };
 
-  // Semester-aware persistence (local backup per semester)
+  // Semester-aware persistence (local storage per semester)
   const getSemesterKey = (userId: string, semester: string) =>
     `cf_${userId}_sem_${semester.replace(/\s+/g, '_')}`;
 
@@ -1166,8 +1362,7 @@ const StudentDashboard: React.FC = () => {
         await deleteDoc(doc(db, 'assignments', id));
       setAssignments(assignments.filter((a) => a.id !== id));
       } catch (error) {
-        console.error('Error deleting assignment:', error);
-        alert('Failed to delete assignment. Please try again.');
+        showCustomAlertPopup('Error', 'Failed to delete assignment. Please try again.', 'error');
       }
     }
   };
@@ -1180,8 +1375,7 @@ const StudentDashboard: React.FC = () => {
         await deleteDoc(doc(db, 'exams', id));
       setExams(exams.filter((e) => e.id !== id));
       } catch (error) {
-        console.error('Error deleting exam:', error);
-        alert('Failed to delete exam. Please try again.');
+        showCustomAlertPopup('Error', 'Failed to delete exam. Please try again.', 'error');
       }
     }
   };
@@ -1207,8 +1401,7 @@ const StudentDashboard: React.FC = () => {
     );
       }
     } catch (error) {
-      console.error('Error updating assignment status:', error);
-      alert('Failed to update assignment status. Please try again.');
+      showCustomAlertPopup('Error', 'Failed to update assignment status. Please try again.', 'error');
     }
   };
 
@@ -1234,13 +1427,11 @@ const StudentDashboard: React.FC = () => {
       setAssignments([...assignments, newAssignmentWithId]);
       showCustomNotificationMessage('Assignment duplicated successfully!', 'success');
     } catch (error) {
-      console.error('Error duplicating assignment:', error);
-      alert('Failed to duplicate assignment. Please try again.');
+      showCustomAlertPopup('Error', 'Failed to duplicate assignment. Please try again.', 'error');
     }
   };
 
   const handleEditAssignment = (assignment: Assignment) => {
-    console.log('handleEditAssignment called with:', assignment);
     setEditingAssignment(assignment);
     // Pre-fill the form with existing assignment data
     setAssignmentForm({
@@ -1283,8 +1474,7 @@ const StudentDashboard: React.FC = () => {
         pdfFile: null,
       });
     } catch (error) {
-      console.error('Error adding assignment:', error);
-      alert('Failed to add assignment. Please try again.');
+      showCustomAlertPopup('Error', 'Failed to add assignment. Please try again.', 'error');
     }
   };
 
@@ -1298,7 +1488,7 @@ const StudentDashboard: React.FC = () => {
       // Find the existing assignment to preserve its original creation date
       const existingAssignment = assignments.find(a => a.id === assignmentId);
       if (!existingAssignment) {
-        alert('Assignment not found. Please try again.');
+        showCustomAlertPopup('Error', 'Assignment not found. Please try again.', 'error');
         return;
       }
       const assignmentToUpdate = {
@@ -1325,8 +1515,7 @@ const StudentDashboard: React.FC = () => {
       });
       showCustomNotificationMessage('Assignment updated successfully!', 'success');
     } catch (error) {
-      console.error('Error updating assignment:', error);
-      alert('Failed to update assignment. Please try again.');
+      showCustomAlertPopup('Error', 'Failed to update assignment. Please try again.', 'error');
     }
   };
 
@@ -1352,8 +1541,7 @@ const StudentDashboard: React.FC = () => {
       setExams([...exams, newExamWithId]);
     setShowExamModal(false);
     } catch (error) {
-      console.error('Error adding exam:', error);
-      alert('Failed to add exam. Please try again.');
+      showCustomAlertPopup('Error', 'Failed to add exam. Please try again.', 'error');
     }
   };
 
@@ -1379,8 +1567,7 @@ const StudentDashboard: React.FC = () => {
       
       setShowSubjectsModal(false);
     } catch (error) {
-      console.error('Error adding subject:', error);
-      alert('Failed to add subject. Please try again.');
+      showCustomAlertPopup('Error', 'Failed to add subject. Please try again.', 'error');
     }
   };
 
@@ -1399,8 +1586,7 @@ const StudentDashboard: React.FC = () => {
       setSubjects(subjects.map(s => s.id === id ? { ...subjectToUpdate, id } : s));
       showCustomNotificationMessage('Subject updated successfully!', 'success');
     } catch (error) {
-      console.error('Error updating subject:', error);
-      alert('Failed to update subject. Please try again.');
+      showCustomAlertPopup('Error', 'Failed to update subject. Please try again.', 'error');
     }
   };
 
@@ -1424,8 +1610,7 @@ const StudentDashboard: React.FC = () => {
           
           showCustomNotificationMessage('Subject deleted successfully!', 'success');
         } catch (error) {
-          console.error('Error deleting subject:', error);
-          showCustomNotificationMessage('Failed to delete subject. Please try again.', 'error');
+          showCustomAlertPopup('Error', 'Failed to delete subject. Please try again.', 'error');
         }
       },
       'danger',
@@ -1450,8 +1635,7 @@ const StudentDashboard: React.FC = () => {
       
       showCustomNotificationMessage('Notification marked as read', 'success');
     } catch (error) {
-      console.error('Error marking notification as read:', error);
-      showCustomNotificationMessage('Failed to mark notification as read. Please try again.', 'error');
+      showCustomAlertPopup('Error', 'Failed to mark notification as read. Please try again.', 'error');
     }
   };
 
@@ -1474,8 +1658,7 @@ const StudentDashboard: React.FC = () => {
           
           showCustomNotificationMessage('Notification deleted successfully!', 'success');
         } catch (error) {
-          console.error('Error deleting notification:', error);
-          showCustomNotificationMessage('Failed to delete notification. Please try again.', 'error');
+          showCustomAlertPopup('Error', 'Failed to delete notification. Please try again.', 'error');
         }
       },
       'warning',
@@ -1505,8 +1688,7 @@ const StudentDashboard: React.FC = () => {
       
       showCustomNotificationMessage('All notifications marked as read!', 'success');
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
-      showCustomNotificationMessage('Failed to mark all notifications as read. Please try again.', 'error');
+      showCustomAlertPopup('Error', 'Failed to mark all notifications as read. Please try again.', 'error');
     }
   };
 
@@ -1524,6 +1706,11 @@ const StudentDashboard: React.FC = () => {
     setTimeout(() => {
       setShowCustomNotification(false);
     }, 4000);
+  };
+
+  const showCustomAlertPopup = (title: string, message: string, type: 'success' | 'error' | 'warning' | 'info', onConfirm?: () => void) => {
+    setAlertConfig({ title, message, type, onConfirm: onConfirm || (() => setShowCustomAlert(false)) });
+    setShowCustomAlert(true);
   };
 
   const showConfirmDialog = (
@@ -1584,8 +1771,7 @@ const StudentDashboard: React.FC = () => {
           
           showCustomNotificationMessage('File deleted successfully!', 'success');
         } catch (error) {
-          console.error('Error deleting file:', error);
-          showCustomNotificationMessage('Failed to delete file. Please try again.', 'error');
+          showCustomAlertPopup('Error', 'Failed to delete file. Please try again.', 'error');
         }
       },
       'danger',
@@ -1598,6 +1784,33 @@ const StudentDashboard: React.FC = () => {
     return assignments
       .filter(a => a.fileSize && a.fileSize > 0)
       .sort((a, b) => (b.fileSize || 0) - (a.fileSize || 0));
+  };
+
+  const getSortedFilesBySize = () => {
+    const assignmentFiles = assignments
+      .filter(a => a.fileSize && a.fileSize > 0)
+      .map(a => ({
+        id: a.id,
+        name: a.title,
+        size: a.fileSize || 0,
+        type: 'assignment',
+        subjectName: a.subjectName,
+        createdAt: a.createdAt,
+        fileType: 'pdf'
+      }));
+
+    const studyFilesList = studyFiles.map(f => ({
+      id: f.id,
+      name: f.name,
+      size: f.fileSize || 0,
+      type: 'study',
+      subjectName: f.subjectName,
+      createdAt: f.createdAt,
+      fileType: f.fileType
+    }));
+
+    return [...assignmentFiles, ...studyFilesList]
+      .sort((a, b) => b.size - a.size);
   };
 
   const handleImportExamData = async () => {
@@ -1649,8 +1862,6 @@ const StudentDashboard: React.FC = () => {
     ];
 
     try {
-      console.log('Starting data import...');
-      
       // First add subjects
       const subjects = [];
       for (const exam of examData) {
@@ -1661,10 +1872,8 @@ const StudentDashboard: React.FC = () => {
           createdAt: new Date(),
         };
         
-        console.log(`Adding subject: ${exam.courseName}`);
         const subjectRef = await addDoc(collection(db, 'subjects'), subject);
         subjects.push({ ...subject, id: subjectRef.id });
-        console.log(`✅ Subject added with ID: ${subjectRef.id}`);
       }
       
       // Now add the exams
@@ -1684,19 +1893,14 @@ const StudentDashboard: React.FC = () => {
             createdAt: new Date(),
           };
           
-          console.log(`Adding exam: ${exam.courseName}`);
           const examRef = await addDoc(collection(db, 'exams'), examData);
-          console.log(`✅ Exam added with ID: ${examRef.id}`);
         }
       }
       
-      alert('🎉 Data import completed successfully!');
-      console.log('🎉 Data import completed successfully!');
-      console.log(`Added ${subjects.length} subjects and ${examData.length} exams`);
+      showCustomAlertPopup('Success', `Data import completed successfully! Added ${subjects.length} subjects and ${examData.length} exams.`, 'success');
       
           } catch (error) {
-        console.error('Error importing data:', error);
-        alert('Error importing data: ' + (error as Error).message);
+        showCustomAlertPopup('Error', 'Error importing data: ' + (error as Error).message, 'error');
       }
   };
 
@@ -1759,8 +1963,7 @@ const StudentDashboard: React.FC = () => {
         });
       }
     } catch (error) {
-      console.error('Error updating exam:', error);
-      alert('Failed to update exam. Please try again.');
+      showCustomAlertPopup('Error', 'Failed to update exam. Please try again.', 'error');
     }
   };
 
@@ -1771,7 +1974,7 @@ const StudentDashboard: React.FC = () => {
     const currentSemester = currentUser.semester || 'Default';
     const userId = currentUser.id;
 
-    // Backup current data into localStorage under current semester
+    // Save current data into localStorage under current semester
     saveSemesterData(userId, currentSemester, { assignments, exams });
 
     // Try to load data for the new semester; if none, start fresh
@@ -1796,40 +1999,66 @@ const StudentDashboard: React.FC = () => {
     }
   };
 
-  // Account actions
-  const exportData = () => {
+
+
+
+  const handleClearAllData = async () => {
     try {
-      const payload = {
-        user: currentUser,
-        assignments,
-        exams,
-        exportedAt: new Date().toISOString(),
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], {
-        type: 'application/json;charset=utf-8',
+      // Clear assignments
+      const assignmentsQuery = query(collection(db, 'assignments'), where('studentId', '==', currentUser?.id));
+      const assignmentsSnapshot = await getDocs(assignmentsQuery);
+      assignmentsSnapshot.forEach(async (doc) => {
+        await deleteDoc(doc.ref);
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'campusflow-export.json';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      alert('Failed to export data.');
+
+      // Clear exams
+      const examsQuery = query(collection(db, 'exams'), where('studentId', '==', currentUser?.id));
+      const examsSnapshot = await getDocs(examsQuery);
+      examsSnapshot.forEach(async (doc) => {
+        await deleteDoc(doc.ref);
+      });
+
+      // Clear subjects
+      const subjectsQuery = query(collection(db, 'subjects'), where('studentId', '==', currentUser?.id));
+      const subjectsSnapshot = await getDocs(subjectsQuery);
+      subjectsSnapshot.forEach(async (doc) => {
+        await deleteDoc(doc.ref);
+      });
+
+      // Clear study files
+      const studyFilesQuery = query(collection(db, 'studyFiles'), where('studentId', '==', currentUser?.id));
+      const studyFilesSnapshot = await getDocs(studyFilesQuery);
+      studyFilesSnapshot.forEach(async (doc) => {
+        await deleteDoc(doc.ref);
+      });
+
+      // Clear study folders
+      const studyFoldersQuery = query(collection(db, 'studyFolders'), where('studentId', '==', currentUser?.id));
+      const studyFoldersSnapshot = await getDocs(studyFoldersQuery);
+      studyFoldersSnapshot.forEach(async (doc) => {
+        await deleteDoc(doc.ref);
+      });
+
+      // Reset local state
+      setAssignments([]);
+      setExams([]);
+      setSubjects([]);
+      setStudyFiles([]);
+      setStudyFolders([]);
+
+      showCustomNotificationMessage('All data cleared successfully!', 'success');
+    } catch (error) {
+      showCustomAlertPopup('Error', 'Failed to clear data. Please try again.', 'error');
     }
   };
 
-  const downloadAllFiles = () => {
-    // Placeholder: files are not stored; this triggers export for now
-    exportData();
-  };
 
   const changePassword = () => {
-    alert('Password changes are managed by your sign-in provider (Google).');
+    showCustomAlertPopup('Info', 'Password changes are managed by your sign-in provider (Google).', 'info');
   };
 
   const deleteAccount = () => {
-    alert('Account deletion is not yet implemented. Contact support.');
+    showCustomAlertPopup('Info', 'Account deletion is not yet implemented. Contact support.', 'info');
   };
 
   const getPriorityColor = (priority: string) => {
@@ -1871,7 +2100,9 @@ const StudentDashboard: React.FC = () => {
   };
 
   const getTotalUsedStorage = () => {
-    return assignments.reduce((total, assignment) => total + (assignment.fileSize || 0), 0);
+    const assignmentStorage = assignments.reduce((total, assignment) => total + (assignment.fileSize || 0), 0);
+    const studyFileStorage = studyFiles.reduce((total, file) => total + (file.fileSize || 0), 0);
+    return assignmentStorage + studyFileStorage;
   };
 
   const getRemainingStorage = () => {
@@ -4091,7 +4322,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
             <div className="flex items-center justify-between">
               <span className="text-gray-600">Total Files</span>
               <span className="font-semibold">
-                {assignments.filter(a => a.fileSize && a.fileSize > 0).length}
+                {assignments.filter(a => a.fileSize && a.fileSize > 0).length + studyFiles.length}
               </span>
             </div>
           </div>
@@ -4128,46 +4359,64 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
               Files by Size (Max to Low)
           </h3>
             <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-              {assignments.filter(a => a.fileSize && a.fileSize > 0).length} files
+              {assignments.filter(a => a.fileSize && a.fileSize > 0).length + studyFiles.length} files
             </span>
           </div>
           
-          {assignments.filter(a => a.fileSize && a.fileSize > 0).length === 0 ? (
+          {getSortedFilesBySize().length === 0 ? (
             <div className="text-center py-8">
               <CloudIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No Files</h3>
-              <p className="text-gray-600">No PDF files uploaded yet.</p>
+              <p className="text-gray-600">No files uploaded yet.</p>
             </div>
           ) : (
             <div className="space-y-3 max-h-96 overflow-y-auto">
-              {getSortedAssignmentsBySize().map((assignment) => (
+              {getSortedFilesBySize().map((file) => (
               <div
-                key={assignment.id}
+                key={file.id}
                   className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2">
                       <div className="flex-shrink-0">
-                        <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
-                          <span className="text-red-600 text-xs font-semibold">PDF</span>
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                          file.fileType === 'pdf' ? 'bg-red-100' : 
+                          file.fileType === 'doc' || file.fileType === 'docx' ? 'bg-blue-100' :
+                          file.fileType === 'jpg' || file.fileType === 'jpeg' || file.fileType === 'png' ? 'bg-green-100' :
+                          'bg-gray-100'
+                        }`}>
+                          <span className={`text-xs font-semibold ${
+                            file.fileType === 'pdf' ? 'text-red-600' : 
+                            file.fileType === 'doc' || file.fileType === 'docx' ? 'text-blue-600' :
+                            file.fileType === 'jpg' || file.fileType === 'jpeg' || file.fileType === 'png' ? 'text-green-600' :
+                            'text-gray-600'
+                          }`}>
+                            {file.fileType.toUpperCase()}
+                          </span>
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 truncate">
-                    {assignment.title}
+                    {file.name}
                   </p>
                         <p className="text-sm text-gray-600 truncate">
-                          {assignment.subjectName} • {assignment.deadline.toLocaleDateString()}
+                          {file.subjectName} • {file.type === 'assignment' ? 'Assignment' : 'Study Material'} • {file.createdAt.toLocaleDateString()}
                   </p>
                 </div>
                     </div>
                   </div>
                   <div className="flex items-center space-x-3">
                                          <span className="text-sm font-semibold text-gray-700">
-                       {formatFileSize((assignment.fileSize || 0) * 1024 * 1024)}
+                       {formatFileSize(file.size * 1024 * 1024)}
                 </span>
                     <button
-                      onClick={() => handleDeleteAssignmentFile(assignment.id)}
+                      onClick={() => {
+                        if (file.type === 'assignment') {
+                          handleDeleteAssignmentFile(file.id);
+                        } else {
+                          handleDeleteFile(studyFiles.find(f => f.id === file.id)!);
+                        }
+                      }}
                       className="text-red-600 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors"
                       title="Delete file"
                     >
@@ -4185,57 +4434,654 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
     </div>
   );
 
+  // File Manager Helper Functions
+  const getCurrentFolder = () => {
+    if (!currentFolderId) return null;
+    return studyFolders.find(f => f.id === currentFolderId);
+  };
+
+  const getCurrentItems = () => {
+    let items: Array<{ type: 'folder' | 'file', data: StudyFolder | StudyFile }> = [];
+    
+    if (currentFolderId === null) {
+      // Show subjects as main folders
+      return subjects.map(subject => ({
+        type: 'folder' as const,
+        data: {
+          id: subject.id,
+          studentId: subject.studentId,
+          name: subject.name,
+          parentId: undefined,
+          subjectId: subject.id,
+          createdAt: subject.createdAt,
+          color: '#ff6b35'
+        } as StudyFolder
+      }));
+    } else {
+      // Check if currentFolderId is a subject ID
+      const isSubject = subjects.some(s => s.id === currentFolderId);
+      
+      if (isSubject) {
+        // Show folders and files for this subject
+        const folders = studyFolders.filter(f => f.subjectId === currentFolderId);
+        const files = studyFiles.filter(f => f.subjectId === currentFolderId);
+        items = [...folders.map(f => ({ type: 'folder' as const, data: f })), ...files.map(f => ({ type: 'file' as const, data: f }))];
+      } else {
+        // Show folders and files for this specific folder
+        const folders = studyFolders.filter(f => f.parentId === currentFolderId);
+        const files = studyFiles.filter(f => f.folderId === currentFolderId);
+        items = [...folders.map(f => ({ type: 'folder' as const, data: f })), ...files.map(f => ({ type: 'file' as const, data: f }))];
+      }
+    }
+    
+    // Apply search filter
+    if (searchQuery) {
+      items = items.filter(item => 
+        item.data.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Apply sorting
+    items.sort((a, b) => {
+      let comparison = 0;
+      if (fileSortBy === 'name') {
+        comparison = a.data.name.localeCompare(b.data.name);
+      } else if (fileSortBy === 'date') {
+        comparison = new Date(a.data.createdAt).getTime() - new Date(b.data.createdAt).getTime();
+      } else if (fileSortBy === 'size' && a.type === 'file' && b.type === 'file') {
+        comparison = (a.data as StudyFile).fileSize - (b.data as StudyFile).fileSize;
+      }
+      return fileSortOrder === 'asc' ? comparison : -comparison;
+    });
+    
+    return items;
+  };
+
+  const getFileIcon = (fileType: string) => {
+    switch (fileType.toLowerCase()) {
+      case 'pdf':
+        return <FileText className="w-8 h-8 text-red-500" />;
+      case 'doc':
+      case 'docx':
+        return <FileText className="w-8 h-8 text-blue-500" />;
+      case 'ppt':
+      case 'pptx':
+        return <FileText className="w-8 h-8 text-orange-500" />;
+      case 'xls':
+      case 'xlsx':
+        return <FileText className="w-8 h-8 text-green-500" />;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+        return <FileText className="w-8 h-8 text-purple-500" />;
+      default:
+        return <File className="w-8 h-8 text-gray-500" />;
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim() || !currentUser?.id) return;
+    
+    try {
+      // Determine subject ID based on current folder
+      let subjectId = '';
+      
+      if (currentFolderId === null) {
+        // If no folder selected, use first subject
+        subjectId = subjects[0]?.id || '';
+      } else {
+        // Check if currentFolderId is a subject
+        const isSubject = subjects.some(s => s.id === currentFolderId);
+        if (isSubject) {
+          subjectId = currentFolderId;
+        } else {
+          // Find subject from folder
+          const folder = studyFolders.find(f => f.id === currentFolderId);
+          subjectId = folder?.subjectId || subjects[0]?.id || '';
+        }
+      }
+      
+      const newFolder: Omit<StudyFolder, 'id'> = {
+        studentId: currentUser.id,
+        name: newFolderName.trim(),
+        parentId: currentFolderId || undefined,
+        subjectId,
+        createdAt: new Date(),
+        color: '#ff6b35', // Orange color
+      };
+      
+      const docRef = await addDoc(collection(db, 'studyFolders'), newFolder);
+      const folderWithId: StudyFolder = { ...newFolder, id: docRef.id };
+      
+      setStudyFolders(prev => [...prev, folderWithId]);
+      setNewFolderName('');
+      setShowCreateFolderModal(false);
+      showCustomNotificationMessage('Folder created successfully!', 'success');
+    } catch (error) {
+      showCustomAlertPopup('Error', 'Failed to create folder. Please try again.', 'error');
+    }
+  };
+
+  const handleUploadFile = async () => {
+    if (!uploadFile || !uploadFileName.trim() || !currentUser?.id) return;
+    
+    // Check storage limits
+    const fileSize = uploadFile.size / (1024 * 1024); // Convert to MB
+    const remainingSpace = getRemainingStorage();
+    
+    if (fileSize > remainingSpace) {
+      showCustomAlertPopup('Storage Error', `File too large! You need ${formatFileSize((fileSize - remainingSpace) * 1024 * 1024)} more space. Current remaining: ${formatFileSize(remainingSpace * 1024 * 1024)}`, 'error');
+      return;
+    }
+    
+    try {
+      const fileType = uploadFile.name.split('.').pop() || '';
+      
+      // Upload file to Firebase Storage
+      const fileName = `${currentUser.id}/${Date.now()}_${uploadFileName.trim()}`;
+      const storageRef = ref(storage, `studyFiles/${fileName}`);
+      const uploadResult = await uploadBytes(storageRef, uploadFile);
+      const fileUrl = await getDownloadURL(uploadResult.ref);
+      
+      // Determine subject ID based on current folder
+      let subjectId = '';
+      let subjectName = '';
+      
+      if (currentFolderId === null) {
+        // If no folder selected, use first subject
+        subjectId = subjects[0]?.id || '';
+        subjectName = subjects[0]?.name || '';
+      } else {
+        // Check if currentFolderId is a subject
+        const isSubject = subjects.some(s => s.id === currentFolderId);
+        if (isSubject) {
+          subjectId = currentFolderId;
+          subjectName = subjects.find(s => s.id === currentFolderId)?.name || '';
+        } else {
+          // Find subject from folder
+          const folder = studyFolders.find(f => f.id === currentFolderId);
+          subjectId = folder?.subjectId || subjects[0]?.id || '';
+          subjectName = subjects.find(s => s.id === subjectId)?.name || '';
+        }
+      }
+      
+      const newFile: Omit<StudyFile, 'id'> = {
+        studentId: currentUser.id,
+        name: uploadFileName.trim(),
+        folderId: currentFolderId || '',
+        subjectId,
+        subjectName,
+        fileUrl,
+        fileSize,
+        fileType,
+        description: uploadFileDescription,
+        createdAt: new Date(),
+        modifiedAt: new Date(),
+      };
+      
+      const docRef = await addDoc(collection(db, 'studyFiles'), newFile);
+      const fileWithId: StudyFile = { ...newFile, id: docRef.id };
+      
+      setStudyFiles(prev => [...prev, fileWithId]);
+      
+      // Show detailed success message
+      const remainingSpace = getRemainingStorage() - fileSize;
+      const usagePercentage = Math.round(((getTotalUsedStorage() + fileSize) / storageInfo.limit) * 100);
+      
+      showCustomNotificationMessage(
+        `File uploaded successfully! ${formatFileSize(fileSize * 1024 * 1024)} uploaded. ${formatFileSize(remainingSpace * 1024 * 1024)} remaining (${usagePercentage}% used)`, 
+        'success'
+      );
+      
+      setUploadFile(null);
+      setUploadFileName('');
+      setUploadFileDescription('');
+      setShowUploadFileModal(false);
+    } catch (error) {
+      showCustomAlertPopup('Error', 'Failed to upload file. Please try again.', 'error');
+    }
+  };
+
+  // Context Menu Handlers
+  const handleContextMenu = (e: React.MouseEvent, item: { type: 'file' | 'folder', data: StudyFile | StudyFolder }) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      item,
+    });
+  };
+
+  const handleCloseContextMenu = () => {
+    setContextMenu({ visible: false, x: 0, y: 0, item: null });
+  };
+
+  const handleDownloadFile = (file: StudyFile) => {
+    if (file.fileUrl) {
+      const link = document.createElement('a');
+      link.href = file.fileUrl;
+      link.download = file.name;
+      link.click();
+    }
+    handleCloseContextMenu();
+  };
+
+  const handleDeleteFile = async (file: StudyFile) => {
+    if (window.confirm(`Are you sure you want to delete "${file.name}"?`)) {
+      try {
+        // Delete from Firebase Storage if it's a Firebase Storage URL
+        if (file.fileUrl && file.fileUrl.includes('firebasestorage.googleapis.com')) {
+          try {
+            const fileRef = ref(storage, file.fileUrl);
+            await deleteObject(fileRef);
+          } catch (storageError) {
+            console.warn('Could not delete file from storage:', storageError);
+            // Continue with Firestore deletion even if storage deletion fails
+          }
+        }
+        
+        // Delete from Firestore
+        await deleteDoc(doc(db, 'studyFiles', file.id));
+        setStudyFiles(prev => prev.filter(f => f.id !== file.id));
+        showCustomNotificationMessage('File deleted successfully!', 'success');
+      } catch (error) {
+        showCustomAlertPopup('Error', 'Failed to delete file. Please try again.', 'error');
+      }
+    }
+    handleCloseContextMenu();
+  };
+
+  const handleDeleteFolder = async (folder: StudyFolder) => {
+    if (window.confirm(`Are you sure you want to delete "${folder.name}"? This will also delete all files inside.`)) {
+      try {
+        // Delete all files in the folder first
+        const filesInFolder = studyFiles.filter(f => f.folderId === folder.id);
+        for (const file of filesInFolder) {
+          await deleteDoc(doc(db, 'studyFiles', file.id));
+        }
+        
+        // Delete the folder
+        await deleteDoc(doc(db, 'studyFolders', folder.id));
+        
+        setStudyFiles(prev => prev.filter(f => f.folderId !== folder.id));
+        setStudyFolders(prev => prev.filter(f => f.id !== folder.id));
+        showCustomNotificationMessage('Folder deleted successfully!', 'success');
+      } catch (error) {
+        showCustomAlertPopup('Error', 'Failed to delete folder. Please try again.', 'error');
+      }
+    }
+    handleCloseContextMenu();
+  };
+
+  const handleRefresh = () => {
+    // Refresh the file manager by re-fetching data
+    // For now, we'll just show a success message
+    showCustomNotificationMessage('File manager refreshed!', 'success');
+  };
+
   const renderMaterials = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Study Materials</h1>
-        <div className="flex space-x-3">
-          <button
-            onClick={() => setShowMaterialModal(true)}
-            className="btn-primary flex items-center space-x-2"
-          >
-            <PlusIcon className="w-5 h-5" />
-            <span>Add Material</span>
-          </button>
+    <div className="h-full flex flex-col bg-gray-50">
+      {/* macOS-style Title Bar */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <h1 className="text-2xl font-semibold text-gray-900">Study Materials</h1>
+            <div className="flex items-center space-x-2 text-sm text-gray-500">
+              {currentFolderId && (
+                <>
+                  <button
+                    onClick={() => setCurrentFolderId(null)}
+                    className="hover:text-orange-600 transition-colors"
+                  >
+                    All Subjects
+                  </button>
+                  <ChevronRight className="w-4 h-4" />
+                  <span className="text-orange-600 font-medium">
+                    {getCurrentFolder()?.name}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+          
+          {/* Toolbar */}
+          <div className="flex items-center space-x-3">
+            {/* Refresh Button */}
+            <button
+              onClick={handleRefresh}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Refresh"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search files..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              />
+            </div>
+            
+            {/* View Mode Toggle */}
+            <div className="flex items-center bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-2 rounded ${viewMode === 'grid' ? 'bg-white shadow-sm' : ''}`}
+              >
+                <Grid3X3 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-2 rounded ${viewMode === 'list' ? 'bg-white shadow-sm' : ''}`}
+              >
+                <List className="w-4 h-4" />
+              </button>
+            </div>
+            
+            {/* Sort Dropdown */}
+            <select
+              value={`${fileSortBy}-${fileSortOrder}`}
+              onChange={(e) => {
+                const [by, order] = e.target.value.split('-');
+                if (by === 'name' || by === 'date' || by === 'size') {
+                  setFileSortBy(by);
+                }
+                if (order === 'asc' || order === 'desc') {
+                  setFileSortOrder(order);
+                }
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="name-asc">Name A-Z</option>
+              <option value="name-desc">Name Z-A</option>
+              <option value="date-desc">Date Newest</option>
+              <option value="date-asc">Date Oldest</option>
+              <option value="size-desc">Size Largest</option>
+              <option value="size-asc">Size Smallest</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {materials.map((material) => (
-          <div key={material.id} className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {material.title}
-              </h3>
-              <span className="text-xs text-gray-500">
-                {material.fileType.toUpperCase()}
-              </span>
-            </div>
-            <div className="space-y-2 text-sm text-gray-600">
-              <p>
-                <strong>Subject:</strong> {material.subjectName}
-              </p>
-              <p>
-                <strong>Size:</strong>{' '}
-                {formatFileSize(material.fileSize * 1024 * 1024)}
-              </p>
-              {material.description && (
-                <p>
-                  <strong>Description:</strong> {material.description}
-                </p>
-              )}
-            </div>
-            <div className="mt-4 flex space-x-2">
-              <button className="text-primary hover:text-orange-600 text-sm font-medium">
-                Download
-              </button>
-              <button className="text-red-600 hover:text-red-700 text-sm font-medium">
-                Delete
-              </button>
-            </div>
+      {/* Action Bar */}
+      <div className="bg-white border-b border-gray-200 px-6 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowCreateFolderModal(true)}
+              className="flex items-center space-x-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+            >
+              <Folder className="w-4 h-4" />
+              <span>New Folder</span>
+            </button>
+            <button
+              onClick={() => setShowUploadFileModal(true)}
+              className="flex items-center space-x-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Upload File</span>
+            </button>
           </div>
-        ))}
+          
+          <div className="text-sm text-gray-500">
+            {getCurrentItems().length} items
+          </div>
+        </div>
       </div>
+
+      {/* Content Area */}
+      <div className="flex-1 p-6 overflow-auto">
+        {currentFolderId === null ? (
+          // Show subjects as main folders
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {subjects.map((subject) => (
+              <div
+                key={subject.id}
+                onClick={() => setCurrentFolderId(subject.id)}
+                className="group cursor-pointer bg-white rounded-xl p-6 border border-gray-200 hover:border-orange-300 hover:shadow-lg transition-all duration-200"
+              >
+                <div className="flex items-center justify-center mb-4">
+                  <div className="w-16 h-16 bg-orange-100 rounded-xl flex items-center justify-center group-hover:bg-orange-200 transition-colors">
+                    <BookOpen className="w-8 h-8 text-orange-600" />
+                  </div>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
+                  {subject.name}
+                </h3>
+                <p className="text-sm text-gray-500 text-center">
+                  {studyFiles.filter(f => f.subjectId === subject.id).length} files
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          // Show files and folders in current directory
+          <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6' : 'space-y-2'}>
+            {getCurrentItems().map((item) => (
+              <div
+                key={item.data.id}
+                className={`group cursor-pointer bg-white rounded-xl border border-gray-200 hover:border-orange-300 hover:shadow-lg transition-all duration-200 relative ${
+                  viewMode === 'list' ? 'flex items-center p-4' : 'p-6'
+                }`}
+                onClick={() => {
+                  if (item.type === 'folder') {
+                    setCurrentFolderId(item.data.id);
+                  } else if (item.type === 'file') {
+                    const file = item.data as StudyFile;
+                    if (file.fileUrl) {
+                      window.open(file.fileUrl, '_blank');
+                    }
+                  }
+                }}
+                onContextMenu={(e) => handleContextMenu(e, item)}
+              >
+                {viewMode === 'grid' ? (
+                  <>
+                    {/* Action Buttons - Show on Hover */}
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      <div className="flex space-x-1">
+                        {item.type === 'file' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownloadFile(item.data as StudyFile);
+                            }}
+                            className="p-1.5 bg-white rounded-lg shadow-sm hover:bg-gray-50 border border-gray-200"
+                            title="Download"
+                          >
+                            <Download className="w-4 h-4 text-gray-600" />
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (item.type === 'file') {
+                              handleDeleteFile(item.data as StudyFile);
+                            } else {
+                              handleDeleteFolder(item.data as StudyFolder);
+                            }
+                          }}
+                          className="p-1.5 bg-white rounded-lg shadow-sm hover:bg-red-50 border border-gray-200 hover:border-red-200"
+                          title="Delete"
+                        >
+                          <svg className="w-4 h-4 text-gray-600 hover:text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-center mb-4">
+                      {item.type === 'folder' ? (
+                        <div className="w-16 h-16 bg-orange-100 rounded-xl flex items-center justify-center group-hover:bg-orange-200 transition-colors">
+                          <Folder className="w-8 h-8 text-orange-600" />
+                        </div>
+                      ) : (
+                        <div className="w-16 h-16 bg-gray-100 rounded-xl flex items-center justify-center">
+                          {getFileIcon((item.data as StudyFile).fileType)}
+                        </div>
+                      )}
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2 truncate">
+                      {item.data.name}
+                    </h3>
+                    {item.type === 'file' && (
+                      <p className="text-sm text-gray-500">
+                        {formatFileSize((item.data as StudyFile).fileSize * 1024 * 1024)}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center space-x-4 flex-1">
+                      {item.type === 'folder' ? (
+                        <Folder className="w-6 h-6 text-orange-600" />
+                      ) : (
+                        getFileIcon((item.data as StudyFile).fileType)
+                      )}
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-900">{item.data.name}</h3>
+                        {item.type === 'file' && (
+                          <p className="text-sm text-gray-500">
+                            {formatFileSize((item.data as StudyFile).fileSize * 1024 * 1024)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      {item.type === 'file' && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const file = item.data as StudyFile;
+                            if (file.fileUrl) {
+                              const link = document.createElement('a');
+                              link.href = file.fileUrl;
+                              link.download = file.name;
+                              link.click();
+                            }
+                          }}
+                          className="p-2 hover:bg-gray-100 rounded-lg"
+                        >
+                          <Download className="w-4 h-4 text-gray-500" />
+                        </button>
+                      )}
+                      <button 
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-2 hover:bg-gray-100 rounded-lg"
+                      >
+                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        
+        {getCurrentItems().length === 0 && (
+          <div className="text-center py-12">
+            <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Folder className="w-12 h-12 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No items found</h3>
+            <p className="text-gray-500">
+              {searchQuery ? 'Try adjusting your search terms' : 'Upload files or create folders to get started'}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Context Menu */}
+      {contextMenu.visible && contextMenu.item && (
+        <div
+          className="fixed bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50 min-w-[160px]"
+          style={{
+            left: contextMenu.x,
+            top: contextMenu.y,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextMenu.item.type === 'file' ? (
+            <>
+              <button
+                onClick={() => {
+                  const file = contextMenu.item!.data as StudyFile;
+                  if (file.fileUrl) {
+                    window.open(file.fileUrl, '_blank');
+                  }
+                  handleCloseContextMenu();
+                }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                <span>Open</span>
+              </button>
+              <button
+                onClick={() => handleDownloadFile(contextMenu.item!.data as StudyFile)}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download</span>
+              </button>
+              <div className="border-t border-gray-100 my-1"></div>
+              <button
+                onClick={() => handleDeleteFile(contextMenu.item!.data as StudyFile)}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span>Delete</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => {
+                  setCurrentFolderId(contextMenu.item!.data.id);
+                  handleCloseContextMenu();
+                }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2"
+              >
+                <Folder className="w-4 h-4" />
+                <span>Open</span>
+              </button>
+              <div className="border-t border-gray-100 my-1"></div>
+              <button
+                onClick={() => handleDeleteFolder(contextMenu.item!.data as StudyFolder)}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span>Delete</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Click outside to close context menu */}
+      {contextMenu.visible && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={handleCloseContextMenu}
+        />
+      )}
     </div>
   );
 
@@ -4318,9 +5164,13 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
   );
 
   const renderAccount = () => (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Account Settings</h1>
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Account Settings</h1>
+          <p className="text-gray-600 mt-2">Manage your profile, data, and account preferences</p>
+        </div>
         <button
           onClick={() => setShowProfileModal(true)}
           className="btn-primary flex items-center space-x-2"
@@ -4330,107 +5180,189 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Profile Information
-          </h3>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Name
-              </label>
+      {/* Profile Information */}
+      <div className="card">
+        <div className="flex items-center space-x-3 mb-6">
+          <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+            <User className="w-6 h-6 text-orange-600" />
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900">Profile Information</h3>
+            <p className="text-gray-600">Your personal and academic details</p>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Full Name
+            </label>
+            <input
+              type="text"
+              value={currentUser?.name || ''}
+              className="input-field"
+              readOnly
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Email Address
+            </label>
+            <input
+              type="email"
+              value={currentUser?.email || ''}
+              className="input-field"
+              readOnly
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Phone Number
+            </label>
+            <input
+              type="text"
+              value={currentUser?.phone || 'Not set'}
+              className="input-field"
+              readOnly
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              College/University
+            </label>
+            <input
+              type="text"
+              value={currentUser?.college || 'Not set'}
+              className="input-field"
+              readOnly
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Course/Program
+            </label>
+            <input
+              type="text"
+              value={currentUser?.course || 'Not set'}
+              className="input-field"
+              readOnly
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Academic Year
+            </label>
+            <input
+              type="text"
+              value={currentUser?.year || 'Not set'}
+              className="input-field"
+              readOnly
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Current Semester
+            </label>
+            <div className="flex space-x-2">
               <input
                 type="text"
-                value={currentUser?.name || ''}
-                className="input-field"
+                value={currentUser?.semester || 'Not set'}
+                className="input-field flex-1"
                 readOnly
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Email
-              </label>
-              <input
-                type="email"
-                value={currentUser?.email || ''}
-                className="input-field"
-                readOnly
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Phone
-              </label>
-              <input
-                type="text"
-                value={currentUser?.phone || 'Not set'}
-                className="input-field"
-                readOnly
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                College/University
-              </label>
-              <input
-                type="text"
-                value={currentUser?.college || 'Not set'}
-                className="input-field"
-                readOnly
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Course/Program
-              </label>
-              <input
-                type="text"
-                value={currentUser?.course || 'Not set'}
-                className="input-field"
-                readOnly
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Year
-              </label>
-              <input
-                type="text"
-                value={currentUser?.year || 'Not set'}
-                className="input-field"
-                readOnly
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Semester
-              </label>
-              <div className="flex space-x-2">
-                <input
-                  type="text"
-                  value={currentUser?.semester || 'Not set'}
-                  className="input-field flex-1"
-                  readOnly
-                />
-                <button onClick={handleChangeSemester} className="btn-primary">
-                  Change
-                </button>
-              </div>
+              <button onClick={handleChangeSemester} className="btn-primary">
+                Change Semester
+              </button>
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Account Actions
-          </h3>
-          <div className="space-y-3">
-            <button onClick={exportData} className="w-full btn-secondary">Export Data</button>
-            <button onClick={downloadAllFiles} className="w-full btn-secondary">Download All Files</button>
-            <button onClick={changePassword} className="w-full btn-secondary">Change Password</button>
-            <button onClick={deleteAccount} className="w-full bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg">Delete Account</button>
+
+      {/* Storage Information */}
+      <div className="card">
+        <div className="flex items-center space-x-3 mb-6">
+          <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
+            <HardDrive className="w-6 h-6 text-indigo-600" />
           </div>
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900">Storage Usage</h3>
+            <p className="text-gray-600">Current storage consumption and limits</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-gray-600">Used Space</span>
+            <span className="font-semibold">
+              {formatFileSize(storageInfo.used * 1024 * 1024)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-600">Available Space</span>
+            <span className="font-semibold">
+              {formatFileSize((storageInfo.limit - storageInfo.used) * 1024 * 1024)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-600">Total Space</span>
+            <span className="font-semibold">
+              {formatFileSize(storageInfo.limit * 1024 * 1024)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-600">Total Files</span>
+            <span className="font-semibold">
+              {assignments.filter(a => a.fileSize && a.fileSize > 0).length + studyFiles.length}
+            </span>
+          </div>
+
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-700">Usage Progress</span>
+              <span className={`text-sm font-medium ${getStorageColor(storageInfo.percentage)}`}>
+                {storageInfo.percentage.toFixed(1)}%
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3">
+              <div
+                className={`h-3 rounded-full transition-all duration-300 ${
+                  storageInfo.percentage >= 90
+                    ? 'bg-red-500'
+                    : storageInfo.percentage >= 75
+                    ? 'bg-yellow-500'
+                    : 'bg-green-500'
+                }`}
+                style={{ width: `${storageInfo.percentage}%` }}
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Account Actions */}
+      <div className="card">
+        <div className="flex items-center space-x-3 mb-6">
+          <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
+            <AlertTriangle className="w-6 h-6 text-red-600" />
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900">Danger Zone</h3>
+            <p className="text-gray-600">Irreversible actions that affect your account</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <button 
+            onClick={deleteAccount} 
+            className="w-full flex items-center justify-center space-x-2 bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg transition-colors"
+          >
+            <Trash2 className="w-5 h-5" />
+            <span>Delete Account Permanently</span>
+          </button>
+          <p className="text-sm text-gray-500 text-center">
+            This action cannot be undone. All your data will be permanently deleted.
+          </p>
         </div>
       </div>
     </div>
@@ -4681,44 +5613,8 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                 className="space-y-3"
               onSubmit={(e) => {
                 e.preventDefault();
-                const subject = subjects.find(
-                  (s) => s.id === assignmentForm.subjectId
-                );
-                if (subject) {
-                  const autoPriority = calculateAutoPriority(assignmentForm.deadline);
-                  const fileSize = assignmentForm.pdfFile ? assignmentForm.pdfFile.size / (1024 * 1024) : 0; // Convert to MB
-                  
-                  console.log('Form submitted. editingAssignment:', editingAssignment);
-                  if (editingAssignment) {
-                    // Update existing assignment
-                    console.log('Updating assignment with ID:', editingAssignment.id);
-                    handleUpdateAssignment(editingAssignment.id, {
-                      title: assignmentForm.title,
-                      subjectId: assignmentForm.subjectId,
-                      subjectName: subject.name,
-                      pdfUrl: assignmentForm.pdfFile ? URL.createObjectURL(assignmentForm.pdfFile) : editingAssignment.pdfUrl,
-                      deadline: new Date(assignmentForm.deadline),
-                      status: editingAssignment.status, // Keep existing status
-                      priority: autoPriority,
-                      fileSize: fileSize || editingAssignment.fileSize,
-                      submissionType: assignmentForm.submissionType,
-                    });
-                  } else {
-                    // Add new assignment
-                    console.log('Adding new assignment');
-                    handleAddAssignment({
-                      title: assignmentForm.title,
-                      subjectId: assignmentForm.subjectId,
-                      subjectName: subject.name,
-                      pdfUrl: assignmentForm.pdfFile ? URL.createObjectURL(assignmentForm.pdfFile) : '',
-                      deadline: new Date(assignmentForm.deadline),
-                      status: 'pending',
-                      priority: autoPriority,
-                      fileSize: fileSize,
-                      submissionType: assignmentForm.submissionType,
-                    });
-                  }
-                }
+                // Form submission is handled by the button onClick, not here
+                // This prevents double submission
               }}
             >
               <div>
@@ -4792,6 +5688,31 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                   PDF File (Optional)
                 </label>
                 <div className="space-y-2">
+                  {/* Show existing PDF when editing */}
+                  {editingAssignment && editingAssignment.pdfUrl && !assignmentForm.pdfFile && (
+                    <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-blue-800">
+                            Current PDF: {editingAssignment.title}.pdf
+                          </p>
+                          <p className="text-xs text-blue-600">
+                            Size: {editingAssignment.fileSize ? formatFileSize(editingAssignment.fileSize * 1024 * 1024) : 'Unknown'}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => window.open(editingAssignment.pdfUrl, '_blank')}
+                            className="text-blue-500 hover:text-blue-700 text-sm"
+                          >
+                            View
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   <input
                     type="file"
                     accept=".pdf"
@@ -4804,12 +5725,14 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                       });
                     }}
                   />
+                  
+                  {/* Show new file selection */}
                   {assignmentForm.pdfFile && (
                     <div className="p-3 bg-green-50 rounded-lg border border-green-200">
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm font-medium text-green-800">
-                            {assignmentForm.pdfFile.name}
+                            New PDF: {assignmentForm.pdfFile.name}
                           </p>
                           <p className="text-xs text-green-600">
                             Size: {formatFileSize(assignmentForm.pdfFile.size)}
@@ -4912,7 +5835,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                   Cancel
                 </button>
                 <button 
-                  type="submit" 
+                  type="button" 
                   onClick={(e) => {
                     e.preventDefault();
                     const subject = subjects.find(
@@ -4922,18 +5845,39 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                       const autoPriority = calculateAutoPriority(assignmentForm.deadline);
                       const fileSize = assignmentForm.pdfFile ? assignmentForm.pdfFile.size / (1024 * 1024) : 0;
                       
-                      handleAddAssignment({
-                        title: assignmentForm.title,
-                        subjectId: assignmentForm.subjectId,
-                        subjectName: subject.name,
-                        pdfUrl: assignmentForm.pdfFile ? URL.createObjectURL(assignmentForm.pdfFile) : '',
-                        deadline: new Date(assignmentForm.deadline),
-                        status: 'pending',
-                        priority: autoPriority,
-                        fileSize: fileSize,
-                        submissionType: assignmentForm.submissionType,
-                      });
+                      // Store the editing assignment in a local variable to prevent race conditions
+                      const currentEditingAssignment = editingAssignment;
+                      
+                      if (currentEditingAssignment) {
+                        // Update existing assignment
+                        handleUpdateAssignment(currentEditingAssignment.id, {
+                          title: assignmentForm.title,
+                          subjectId: assignmentForm.subjectId,
+                          subjectName: subject.name,
+                          pdfUrl: assignmentForm.pdfFile ? URL.createObjectURL(assignmentForm.pdfFile) : currentEditingAssignment.pdfUrl,
+                          deadline: new Date(assignmentForm.deadline),
+                          status: currentEditingAssignment.status, // Keep existing status
+                          priority: autoPriority,
+                          fileSize: fileSize || currentEditingAssignment.fileSize,
+                          submissionType: assignmentForm.submissionType,
+                        });
+                      } else {
+                        // Add new assignment
+                        handleAddAssignment({
+                          title: assignmentForm.title,
+                          subjectId: assignmentForm.subjectId,
+                          subjectName: subject.name,
+                          pdfUrl: assignmentForm.pdfFile ? URL.createObjectURL(assignmentForm.pdfFile) : '',
+                          deadline: new Date(assignmentForm.deadline),
+                          status: 'pending',
+                          priority: autoPriority,
+                          fileSize: fileSize,
+                          submissionType: assignmentForm.submissionType,
+                        });
+                      }
+                      
                       setShowUploadModal(false);
+                      setEditingAssignment(null);
                       setAssignmentForm({
                         title: '',
                         subjectId: '',
@@ -5190,6 +6134,183 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                 </button>
                 <button type="submit" className="flex-1 btn-primary">
                   Add Material
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Folder Modal */}
+      {showCreateFolderModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">
+              Create New Folder
+            </h3>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCreateFolder();
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Folder Name
+                </label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="Enter folder name"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateFolderModal(false);
+                    setNewFolderName('');
+                  }}
+                  className="flex-1 btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="flex-1 btn-primary">
+                  Create Folder
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Upload File Modal */}
+      {showUploadFileModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">
+              Upload File
+            </h3>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleUploadFile();
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  File Name
+                </label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="Enter file name"
+                  value={uploadFileName}
+                  onChange={(e) => setUploadFileName(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Description (Optional)
+                </label>
+                <textarea
+                  className="input-field"
+                  rows={3}
+                  placeholder="Enter description"
+                  value={uploadFileDescription}
+                  onChange={(e) => setUploadFileDescription(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select File
+                </label>
+                <input
+                  type="file"
+                  className="input-field"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  required
+                />
+                {uploadFile && (
+                  <div className="mt-2 p-4 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <p className="text-sm font-medium text-green-800">
+                          {uploadFile.name}
+                        </p>
+                        <p className="text-xs text-green-600">
+                          Size: {formatFileSize(uploadFile.size)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setUploadFile(null)}
+                        className="text-red-500 hover:text-red-700 text-sm"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    
+                    {/* Storage Information */}
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">Current Usage:</span>
+                        <span className="font-medium">{formatFileSize(getTotalUsedStorage() * 1024 * 1024)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">After Upload:</span>
+                        <span className="font-medium">{formatFileSize((getTotalUsedStorage() + uploadFile.size / (1024 * 1024)) * 1024 * 1024)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">Remaining Space:</span>
+                        <span className={`font-medium ${getRemainingStorage() - uploadFile.size / (1024 * 1024) < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          {formatFileSize((getRemainingStorage() - uploadFile.size / (1024 * 1024)) * 1024 * 1024)}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all duration-300 ${
+                            getRemainingStorage() - uploadFile.size / (1024 * 1024) < 0 
+                              ? 'bg-red-500' 
+                              : (getTotalUsedStorage() + uploadFile.size / (1024 * 1024)) / storageInfo.limit > 0.9 
+                                ? 'bg-yellow-500' 
+                                : 'bg-green-500'
+                          }`}
+                          style={{ 
+                            width: `${Math.min(((getTotalUsedStorage() + uploadFile.size / (1024 * 1024)) / storageInfo.limit) * 100, 100)}%` 
+                          }}
+                        ></div>
+                      </div>
+                      <div className="text-center">
+                        <span className="text-xs text-gray-500">
+                          {Math.round(((getTotalUsedStorage() + uploadFile.size / (1024 * 1024)) / storageInfo.limit) * 100)}% of storage will be used
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUploadFileModal(false);
+                    setUploadFile(null);
+                    setUploadFileName('');
+                    setUploadFileDescription('');
+                  }}
+                  className="flex-1 btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="flex-1 btn-primary">
+                  Upload File
                 </button>
               </div>
             </form>
@@ -5637,6 +6758,21 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
           </div>
         </div>
       )}
+
+
+
+
+
+      {/* Custom Alert Popup */}
+      <CustomPopup
+        isOpen={showCustomAlert}
+        onClose={() => setShowCustomAlert(false)}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        onConfirm={alertConfig.onConfirm}
+        confirmText="OK"
+      />
     </div>
   );
 };
