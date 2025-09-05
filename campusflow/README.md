@@ -7,10 +7,13 @@ A modern, responsive student management platform built with React, TypeScript, a
 ### 🎯 Student Dashboard
 
 - **Interactive Dashboard**: Real-time overview of assignments, exams, and academic progress
-- **Assignment Management**: Add, edit, delete, and track assignment status
-- **Exam Scheduling**: Manage exam dates, times, and locations
-- **Storage Management**: Monitor file storage usage and limits
+- **Advanced Assignment Management**: Add, edit, delete, duplicate assignments with enhanced filtering
+- **Smart Filtering System**: Filter by priority, subject, status with modern card-based UI
+- **Exam Scheduling**: Manage exam dates, times, and locations with clickable exam cards
+- **Subject Management**: Complete CRUD operations for subjects (Create, Read, Update, Delete)
+- **Storage Management**: Monitor file storage usage with clean percentage display
 - **Study Materials**: Organize and access study resources
+- **Real-time Motivational Quotes**: API-powered inspirational quotes with refresh functionality
 - **Notifications**: Stay updated with important academic reminders
 
 ### 🍔 Responsive Design
@@ -75,25 +78,36 @@ npm start
 
 ### Student Dashboard Features
 
-#### 📋 Assignment Management
+#### 📋 Advanced Assignment Management
 
-- Add new assignments with title, subject, priority, and deadline
-- Mark assignments as completed or pending
-- Delete assignments with confirmation
-- View assignment details and file sizes
+- **Add New Assignments**: Create assignments with title, subject, priority, and deadline
+- **Edit Assignments**: Update existing assignments with pre-filled forms
+- **Duplicate Assignments**: Clone assignments with one click
+- **Smart Filtering**: Filter by priority (High/Medium/Low), subject, and status
+- **Advanced Sorting**: Sort by deadline, subject, priority, status, or title (ascending/descending)
+- **Status Management**: Mark assignments as completed or pending
+- **PDF Integration**: View attached PDFs directly from assignments
+- **Delete with Confirmation**: Remove assignments with safety confirmation
+- **File Size Tracking**: Monitor assignment file sizes and storage usage
 
-#### 📚 Exam Management
+#### 📚 Enhanced Exam Management
 
-- Schedule exams with date, time, and location
-- Add notes and exam type (lecture, mid, final)
-- Track upcoming exams with countdown
-- Delete exams with confirmation
+- **Schedule Exams**: Create exams with date, time, and location
+- **Exam Types**: Support for lecture, mid-term, and final exams
+- **Interactive Exam Cards**: Click any exam to navigate to exam management page
+- **Visual Countdown**: Track upcoming exams with day count display
+- **Scrollable Content**: Handle long exam names and details gracefully
+- **Orange Theme**: Beautiful orange-themed exam widgets
+- **Gap Indicators**: Show time gaps between consecutive exams
+- **Delete with Confirmation**: Remove exams with safety confirmation
 
-#### 💾 Storage Management
+#### 💾 Enhanced Storage Management
 
-- Monitor storage usage with visual progress bar
-- View storage breakdown by assignment
-- Track file sizes and limits
+- **Visual Progress Bar**: Monitor storage usage with clean percentage display (1 decimal place)
+- **Storage Breakdown**: View storage usage by assignment and file type
+- **File Size Tracking**: Monitor individual file sizes and total storage limits
+- **Color-Coded Alerts**: Visual indicators for storage levels (green/yellow/red)
+- **Responsive Design**: Storage widgets adapt to different screen sizes
 
 #### 📖 Study Materials
 
@@ -107,6 +121,22 @@ npm start
 - Mark notifications as read
 - Track notification history
 
+#### 🎓 Subject Management
+
+- **Complete CRUD Operations**: Create, Read, Update, Delete subjects
+- **Edit Subjects**: Update subject names and codes with pre-filled forms
+- **Subject Statistics**: View assignment and exam counts per subject
+- **Modern UI**: Clean card-based layout with edit/delete buttons
+- **Form Validation**: Ensure data integrity with proper validation
+
+#### 💪 Daily Motivation
+
+- **Real-time Quotes**: API-powered motivational quotes from quotable.io
+- **Refresh Functionality**: Get new quotes with smooth animations
+- **Fallback System**: Local quotes when API is unavailable
+- **Orange Theme**: Beautiful light orange gradient design
+- **Smooth Animations**: Fade-in effects on quote refresh
+
 ### Mobile Responsiveness
 
 The dashboard is fully responsive with:
@@ -116,6 +146,29 @@ The dashboard is fully responsive with:
 - **Adaptive Layout**: Content adjusts to screen size
 - **Overlay Navigation**: Prevents accidental navigation
 
+## 🚀 Latest Updates (v2.0)
+
+### Major UI/UX Improvements
+- **Enhanced Filter System**: Modern card-based filtering with color-coded indicators
+- **Assignment Duplication**: One-click assignment cloning functionality
+- **Real-time Motivational Quotes**: API integration with quotable.io
+- **Interactive Exam Cards**: Clickable exam widgets with navigation
+- **Subject CRUD Operations**: Complete subject management system
+- **Storage Display Fix**: Clean percentage formatting (1 decimal place)
+- **Responsive Design**: Improved mobile and tablet experience
+
+### Bug Fixes
+- Fixed assignment editing duplication issue
+- Resolved Next Exam widget overflow problems
+- Improved form state management
+- Enhanced error handling and user feedback
+
+### Performance Optimizations
+- Better component rendering
+- Optimized state management
+- Improved loading states
+- Enhanced user experience
+
 ## Technology Stack
 
 - **Frontend**: React 19, TypeScript
@@ -124,6 +177,7 @@ The dashboard is fully responsive with:
 - **Database**: Firestore
 - **Icons**: Heroicons
 - **Build Tool**: Create React App
+- **External APIs**: Quotable.io for motivational quotes
 
 ## Project Structure
 
