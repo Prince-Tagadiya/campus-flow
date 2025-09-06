@@ -35,7 +35,7 @@ export interface Assignment {
   priority: 'low' | 'medium' | 'high';
   fileSize?: number;
   description?: string;
-  submissionType: 'assignment' | 'tutorial';
+  submissionType: 'assignment' | 'tutorial' | 'project' | 'exam';
   studyReminderTime?: Date;
   submissionReminderTime?: Date;
 }

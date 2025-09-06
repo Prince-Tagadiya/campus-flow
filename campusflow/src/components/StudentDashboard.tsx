@@ -4,6 +4,10 @@ import { doc, setDoc, collection, addDoc, updateDoc, deleteDoc, getDocs, query, 
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '../firebase/config';
 import CustomPopup from './CustomPopup';
+import AIAssignmentModal from './AIAssignmentModal';
+import { AIService, AIExtractedAssignment } from '../services/aiService';
+import { PDFService } from '../services/pdfService';
+import { OCRService } from '../services/ocrService';
 import {
   ClockIcon,
   UserIcon,
@@ -56,7 +60,8 @@ import {
   Search,
   MoreVertical,
   Lock,
-  AlertTriangle
+  AlertTriangle,
+  Sparkles
 } from 'lucide-react';
 import {
   Assignment,
@@ -169,71 +174,8 @@ const StudentDashboard: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [sortBy, setSortBy] = useState<'deadline' | 'subject' | 'priority' | 'status' | 'title'>('deadline');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [exams, setExams] = useState<Exam[]>([
-    {
-      id: '1',
-      studentId: '1',
-      subjectId: '1',
-      subjectName: 'Mathematics',
-      examType: 'mid',
-      examDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
-      startTime: '09:00',
-      endTime: '11:00',
-      room: 'Room 101',
-      notes: 'Bring calculator',
-      createdAt: new Date(),
-    },
-    {
-      id: '2',
-      studentId: '1',
-      subjectId: '2',
-      subjectName: 'Physics',
-      examType: 'final',
-      examDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      startTime: '14:00',
-      endTime: '16:00',
-      room: 'Room 205',
-      notes: 'Closed book exam',
-      createdAt: new Date(),
-    },
-  ]);
-  const [subjects, setSubjects] = useState<Subject[]>([
-    {
-      id: '1',
-      name: 'Mathematics',
-      code: 'MATH101',
-      studentId: '1',
-      createdAt: new Date(),
-    },
-    {
-      id: '2',
-      name: 'Physics',
-      code: 'PHYS101',
-      studentId: '1',
-      createdAt: new Date(),
-    },
-    {
-      id: '3',
-      name: 'Chemistry',
-      code: 'CHEM101',
-      studentId: '1',
-      createdAt: new Date(),
-    },
-    {
-      id: '4',
-      name: 'English',
-      code: 'ENG101',
-      studentId: '1',
-      createdAt: new Date(),
-    },
-    {
-      id: '5',
-      name: 'Computer Science',
-      code: 'CS101',
-      studentId: '1',
-      createdAt: new Date(),
-    },
-  ]);
+  const [exams, setExams] = useState<Exam[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [materials] = useState<Material[]>([
     {
       id: '1',
@@ -311,6 +253,12 @@ const StudentDashboard: React.FC = () => {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadFileDescription, setUploadFileDescription] = useState('');
+  
+  // AI Assignment states
+  const [showAIAssignmentModal, setShowAIAssignmentModal] = useState(false);
+  const [aiExtractedData, setAiExtractedData] = useState<AIExtractedAssignment | null>(null);
+  const [isProcessingAI, setIsProcessingAI] = useState(false);
+  const [aiPdfFile, setAiPdfFile] = useState<File | null>(null);
   
   // Context Menu States
   const [contextMenu, setContextMenu] = useState<{
@@ -591,7 +539,7 @@ const StudentDashboard: React.FC = () => {
   const [assignmentForm, setAssignmentForm] = useState({
     title: '',
     subjectId: '',
-    submissionType: 'assignment' as 'assignment' | 'tutorial',
+    submissionType: 'assignment' as 'assignment' | 'tutorial' | 'project' | 'exam',
     deadline: '',
     pdfFile: null as File | null,
   });
@@ -1485,17 +1433,29 @@ const StudentDashboard: React.FC = () => {
     if (!currentUser?.id) return;
     
     try {
+      console.log('Updating assignment:', assignmentId, updatedAssignment);
+      
       // Find the existing assignment to preserve its original creation date
       const existingAssignment = assignments.find(a => a.id === assignmentId);
       if (!existingAssignment) {
+        console.error('Assignment not found:', assignmentId);
         showCustomAlertPopup('Error', 'Assignment not found. Please try again.', 'error');
         return;
       }
+      
       const assignmentToUpdate = {
         ...updatedAssignment,
         studentId: currentUser.id,
         createdAt: existingAssignment.createdAt, // Preserve original creation date
       };
+      
+      console.log('Assignment data to update:', assignmentToUpdate);
+      
+      // Validate required fields
+      if (!assignmentToUpdate.title || !assignmentToUpdate.subjectId) {
+        showCustomAlertPopup('Error', 'Please fill in all required fields.', 'error');
+        return;
+      }
       
       await updateDoc(doc(db, 'assignments', assignmentId), assignmentToUpdate);
       
@@ -1515,7 +1475,9 @@ const StudentDashboard: React.FC = () => {
       });
       showCustomNotificationMessage('Assignment updated successfully!', 'success');
     } catch (error) {
-      showCustomAlertPopup('Error', 'Failed to update assignment. Please try again.', 'error');
+      console.error('Error updating assignment:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      showCustomAlertPopup('Error', `Failed to update assignment: ${errorMessage}`, 'error');
     }
   };
 
@@ -2002,54 +1964,303 @@ const StudentDashboard: React.FC = () => {
 
 
 
-  const handleClearAllData = async () => {
+  // AI Assignment Functions
+  const handleAIAssignmentUpload = async (file: File) => {
     try {
-      // Clear assignments
-      const assignmentsQuery = query(collection(db, 'assignments'), where('studentId', '==', currentUser?.id));
-      const assignmentsSnapshot = await getDocs(assignmentsQuery);
-      assignmentsSnapshot.forEach(async (doc) => {
-        await deleteDoc(doc.ref);
-      });
+      setIsProcessingAI(true);
+      
+      // Validate file (PDF or image)
+      const validation = PDFService.validateFile(file);
+      if (!validation.valid) {
+        showCustomAlertPopup('Error', validation.error || 'Invalid file', 'error');
+        return;
+      }
 
-      // Clear exams
-      const examsQuery = query(collection(db, 'exams'), where('studentId', '==', currentUser?.id));
-      const examsSnapshot = await getDocs(examsQuery);
-      examsSnapshot.forEach(async (doc) => {
-        await deleteDoc(doc.ref);
-      });
-
-      // Clear subjects
-      const subjectsQuery = query(collection(db, 'subjects'), where('studentId', '==', currentUser?.id));
-      const subjectsSnapshot = await getDocs(subjectsQuery);
-      subjectsSnapshot.forEach(async (doc) => {
-        await deleteDoc(doc.ref);
-      });
-
-      // Clear study files
-      const studyFilesQuery = query(collection(db, 'studyFiles'), where('studentId', '==', currentUser?.id));
-      const studyFilesSnapshot = await getDocs(studyFilesQuery);
-      studyFilesSnapshot.forEach(async (doc) => {
-        await deleteDoc(doc.ref);
-      });
-
-      // Clear study folders
-      const studyFoldersQuery = query(collection(db, 'studyFolders'), where('studentId', '==', currentUser?.id));
-      const studyFoldersSnapshot = await getDocs(studyFoldersQuery);
-      studyFoldersSnapshot.forEach(async (doc) => {
-        await deleteDoc(doc.ref);
-      });
-
-      // Reset local state
-      setAssignments([]);
-      setExams([]);
-      setSubjects([]);
-      setStudyFiles([]);
-      setStudyFolders([]);
-
-      showCustomNotificationMessage('All data cleared successfully!', 'success');
+      setAiPdfFile(file);
+      
+      // Extract text from file (PDF or image)
+      const extractedText = await PDFService.extractTextFromFile(file);
+      
+      // Extract assignment details using AI
+      const extractedData = await AIService.extractAssignmentDetails(extractedText);
+      
+      setAiExtractedData(extractedData);
+      setShowAIAssignmentModal(true);
+      
     } catch (error) {
-      showCustomAlertPopup('Error', 'Failed to clear data. Please try again.', 'error');
+      console.error('Error processing AI assignment:', error);
+      showCustomAlertPopup('Error', 'Failed to process file. Please try again or enter details manually.', 'error');
+    } finally {
+      setIsProcessingAI(false);
     }
+  };
+
+  const handleAIAssignmentConfirm = async (data: AIExtractedAssignment) => {
+    try {
+      if (!currentUser?.id) return;
+
+      // Find matching subject
+      let subjectId = '';
+      let subjectName = '';
+      
+      if (data.subject) {
+        const matchingSubject = subjects.find(s => 
+          s.name.toLowerCase().includes(data.subject!.toLowerCase()) ||
+          s.code.toLowerCase().includes(data.subject!.toLowerCase())
+        );
+        
+        if (matchingSubject) {
+          subjectId = matchingSubject.id;
+          subjectName = matchingSubject.name;
+        } else {
+          // Use first subject as fallback
+          subjectId = subjects[0]?.id || '';
+          subjectName = subjects[0]?.name || '';
+        }
+      } else {
+        subjectId = subjects[0]?.id || '';
+        subjectName = subjects[0]?.name || '';
+      }
+
+      // Create assignment from AI data
+      const newAssignment = {
+        title: data.title,
+        subjectId: subjectId,
+        subjectName: subjectName,
+        pdfUrl: aiPdfFile ? URL.createObjectURL(aiPdfFile) : '',
+        deadline: data.deadline ? new Date(data.deadline) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Default to 1 week
+        status: 'pending' as const,
+        priority: data.priority || 'medium',
+        fileSize: aiPdfFile ? aiPdfFile.size : 0,
+        submissionType: data.submissionType || 'assignment',
+        studentId: currentUser.id,
+        createdAt: new Date(),
+      };
+
+      // Add to database
+      const docRef = await addDoc(collection(db, 'assignments'), newAssignment);
+      const assignmentWithId = { ...newAssignment, id: docRef.id };
+
+      // Update local state
+      setAssignments(prev => [...prev, assignmentWithId]);
+
+      // Reset AI states
+      setAiExtractedData(null);
+      setAiPdfFile(null);
+      setShowAIAssignmentModal(false);
+
+      showCustomNotificationMessage('Assignment created successfully using AI!', 'success');
+
+    } catch (error) {
+      console.error('Error creating AI assignment:', error);
+      showCustomAlertPopup('Error', 'Failed to create assignment. Please try again.', 'error');
+    }
+  };
+
+  const handleAIAssignmentEdit = () => {
+    // Close AI modal and open regular assignment modal with pre-filled data
+    setShowAIAssignmentModal(false);
+    setShowUploadModal(true);
+    
+    // Pre-fill the form with AI data
+    if (aiExtractedData) {
+      setAssignmentForm({
+        title: aiExtractedData.title,
+        subjectId: subjects.find(s => s.name.toLowerCase().includes(aiExtractedData.subject?.toLowerCase() || ''))?.id || subjects[0]?.id || '',
+        submissionType: aiExtractedData.submissionType || 'assignment',
+        deadline: aiExtractedData.deadline || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        pdfFile: aiPdfFile,
+      });
+    }
+  };
+
+  const handleClearAllData = async () => {
+    if (!currentUser?.id) return;
+    
+    const userId = currentUser.id; // Capture user ID before callback
+    
+    showCustomAlertPopup(
+      'Clear All Data',
+      'Are you sure you want to clear all your data and load only the new ICT course data? This action cannot be undone.',
+      'warning',
+      async () => {
+        try {
+          console.log('Clearing all existing data for user:', userId);
+          
+          // Clear assignments
+          const assignmentsQuery = query(collection(db, 'assignments'), where('studentId', '==', userId));
+          const assignmentsSnapshot = await getDocs(assignmentsQuery);
+          await Promise.all(assignmentsSnapshot.docs.map(doc => deleteDoc(doc.ref)));
+
+          // Clear exams
+          const examsQuery = query(collection(db, 'exams'), where('studentId', '==', userId));
+          const examsSnapshot = await getDocs(examsQuery);
+          await Promise.all(examsSnapshot.docs.map(doc => deleteDoc(doc.ref)));
+
+          // Clear subjects
+          const subjectsQuery = query(collection(db, 'subjects'), where('studentId', '==', userId));
+          const subjectsSnapshot = await getDocs(subjectsQuery);
+          await Promise.all(subjectsSnapshot.docs.map(doc => deleteDoc(doc.ref)));
+
+          // Clear study files
+          const studyFilesQuery = query(collection(db, 'studyFiles'), where('studentId', '==', userId));
+          const studyFilesSnapshot = await getDocs(studyFilesQuery);
+          await Promise.all(studyFilesSnapshot.docs.map(doc => deleteDoc(doc.ref)));
+
+          // Clear study folders
+          const studyFoldersQuery = query(collection(db, 'studyFolders'), where('studentId', '==', userId));
+          const studyFoldersSnapshot = await getDocs(studyFoldersQuery);
+          await Promise.all(studyFoldersSnapshot.docs.map(doc => deleteDoc(doc.ref)));
+
+          // Clear notifications
+          const notificationsQuery = query(collection(db, 'notifications'), where('studentId', '==', userId));
+          const notificationsSnapshot = await getDocs(notificationsQuery);
+          await Promise.all(notificationsSnapshot.docs.map(doc => deleteDoc(doc.ref)));
+
+          console.log('Loading new ICT course data...');
+          
+          // Load new ICT subjects
+          const newSubjects = [
+            {
+              name: 'FUNDAMENTALS OF ECONOMICS AND BUSINESS MANAGEMENT',
+              code: '202003402',
+              studentId: userId,
+              createdAt: new Date(),
+            },
+            {
+              name: 'SIGNALS SYSTEMS AND APPLICATIONS',
+              code: '202230302',
+              studentId: userId,
+              createdAt: new Date(),
+            },
+            {
+              name: 'DISCRETE MATHEMATICS AND APPLICATIONS',
+              code: '202230301',
+              studentId: userId,
+              createdAt: new Date(),
+            },
+            {
+              name: 'DIGITAL COMPUTER ORGANIZATION',
+              code: '202230303',
+              studentId: userId,
+              createdAt: new Date(),
+            },
+            {
+              name: 'INDIAN ETHOS AND VALUE EDUCATION',
+              code: '202003403',
+              studentId: userId,
+              createdAt: new Date(),
+            },
+            {
+              name: 'DATA STRUCTURES AND ALGORITHMS',
+              code: '202230304',
+              studentId: userId,
+              createdAt: new Date(),
+            },
+          ];
+          
+          // Add subjects to database
+          const subjectPromises = newSubjects.map(subject => addDoc(collection(db, 'subjects'), subject));
+          const subjectDocs = await Promise.all(subjectPromises);
+          
+          // Load new ICT exams
+          const newExams = [
+            {
+              subjectId: subjectDocs[0].id,
+              subjectName: 'FUNDAMENTALS OF ECONOMICS AND BUSINESS MANAGEMENT',
+              examType: 'mid',
+              examDate: new Date('2025-09-19'),
+              startTime: '09:30',
+              endTime: '10:30',
+              room: 'TBA',
+              notes: 'Course Code: 202003402',
+              studentId: userId,
+              createdAt: new Date(),
+            },
+            {
+              subjectId: subjectDocs[1].id,
+              subjectName: 'SIGNALS SYSTEMS AND APPLICATIONS',
+              examType: 'mid',
+              examDate: new Date('2025-09-19'),
+              startTime: '14:00',
+              endTime: '15:00',
+              room: 'TBA',
+              notes: 'Course Code: 202230302',
+              studentId: userId,
+              createdAt: new Date(),
+            },
+            {
+              subjectId: subjectDocs[2].id,
+              subjectName: 'DISCRETE MATHEMATICS AND APPLICATIONS',
+              examType: 'mid',
+              examDate: new Date('2025-09-20'),
+              startTime: '09:30',
+              endTime: '10:30',
+              room: 'TBA',
+              notes: 'Course Code: 202230301',
+              studentId: userId,
+              createdAt: new Date(),
+            },
+            {
+              subjectId: subjectDocs[3].id,
+              subjectName: 'DIGITAL COMPUTER ORGANIZATION',
+              examType: 'mid',
+              examDate: new Date('2025-09-20'),
+              startTime: '09:30',
+              endTime: '10:30',
+              room: 'TBA',
+              notes: 'Course Code: 202230303',
+              studentId: userId,
+              createdAt: new Date(),
+            },
+            {
+              subjectId: subjectDocs[4].id,
+              subjectName: 'INDIAN ETHOS AND VALUE EDUCATION',
+              examType: 'mid',
+              examDate: new Date('2025-09-22'),
+              startTime: '14:00',
+              endTime: '15:00',
+              room: 'TBA',
+              notes: 'Course Code: 202003403',
+              studentId: userId,
+              createdAt: new Date(),
+            },
+            {
+              subjectId: subjectDocs[5].id,
+              subjectName: 'DATA STRUCTURES AND ALGORITHMS',
+              examType: 'mid',
+              examDate: new Date('2025-09-22'),
+              startTime: '09:30',
+              endTime: '10:30',
+              room: 'TBA',
+              notes: 'Course Code: 202230304',
+              studentId: userId,
+              createdAt: new Date(),
+            },
+          ];
+          
+          // Add exams to database
+          const examPromises = newExams.map(exam => addDoc(collection(db, 'exams'), exam));
+          await Promise.all(examPromises);
+
+          // Reset local state
+          setAssignments([]);
+          setExams([]);
+          setSubjects([]);
+          setStudyFiles([]);
+          setStudyFolders([]);
+          setNotifications([]);
+
+          console.log('Data cleared and new ICT course data loaded successfully!');
+          showCustomNotificationMessage('All data cleared and new ICT course data loaded successfully!', 'success');
+        } catch (error) {
+          console.error('Error clearing and loading data:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+          console.error('Full error details:', error);
+          showCustomAlertPopup('Error', `Failed to clear and load data: ${errorMessage}. Check console for details.`, 'error');
+        }
+      }
+    );
   };
 
 
@@ -2243,7 +2454,7 @@ const StudentDashboard: React.FC = () => {
                                   onClick={() => window.open(assignment.pdfUrl, '_blank')}
                                   className="mt-1 text-xs text-blue-600 hover:text-blue-800 underline"
                                 >
-                                  📄 View PDF
+                                  📄 View File
                                 </button>
                               )}
                             </div>
@@ -3160,7 +3371,7 @@ const StudentDashboard: React.FC = () => {
                       <p className="font-medium text-gray-900 truncate text-sm">{a.title}</p>
                       <p className="text-xs text-gray-600 truncate mt-1">{a.subjectName} • {a.deadline.toLocaleDateString()}</p>
                       <p className={`text-xs mt-1 ${a.pdfUrl ? 'text-green-600' : 'text-gray-500'}`}>
-                        {a.pdfUrl ? '📄 Click to view PDF' : 'No file attached'}
+                        {a.pdfUrl ? '📄 Click to view file' : 'No file attached'}
                       </p>
                     </div>
                     <div className="flex flex-col items-end space-y-1 ml-3">
@@ -3726,6 +3937,86 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
             <PlusIcon className="w-5 h-5" />
             <span>Add Assignment</span>
           </button>
+          
+          <div className="relative">
+            <input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  handleAIAssignmentUpload(file);
+                }
+              }}
+              className="hidden"
+              id="ai-assignment-upload"
+              disabled={isProcessingAI}
+            />
+            <label
+              htmlFor="ai-assignment-upload"
+              className={`btn-secondary flex items-center space-x-2 cursor-pointer ${
+                isProcessingAI ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'
+              }`}
+            >
+              {isProcessingAI ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-gray-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Processing AI...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-5 h-5" />
+                  <span>Add with AI</span>
+                </>
+              )}
+            </label>
+            
+            <button
+              onClick={() => {
+                // Simple OCR test - open file dialog and process
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp';
+                input.onchange = async (e) => {
+                  const file = (e.target as HTMLInputElement).files?.[0];
+                  if (file) {
+                    try {
+                      setIsProcessingAI(true);
+                      console.log('Starting OCR test with file:', file.name, 'Type:', file.type);
+                      
+                      // Try image first for testing
+                      if (OCRService.getSupportedImageTypes().includes(file.type)) {
+                        console.log('Testing with image file...');
+                        const text = await PDFService.testOCRWithImage(file);
+                        alert(`OCR Test Successful!\n\nExtracted text:\n\n${text.substring(0, 500)}${text.length > 500 ? '...' : ''}`);
+                      } else if (file.type === 'application/pdf') {
+                        console.log('Testing with PDF file...');
+                        try {
+                          const text = await PDFService.extractTextFromFile(file);
+                          alert(`PDF Extraction Successful!\n\nExtracted text:\n\n${text.substring(0, 500)}${text.length > 500 ? '...' : ''}`);
+                        } catch (pdfError) {
+                          alert(`PDF processing failed. This might be due to:\n\n1. PDF.js worker loading issues\n2. Network connectivity problems\n3. PDF file format issues\n\nTry testing with an image file (JPG, PNG) instead.\n\nError: ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}`);
+                        }
+                      } else {
+                        alert('Unsupported file type. Please select a PDF or image file.');
+                      }
+                    } catch (error) {
+                      console.error('OCR test error:', error);
+                      alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\nCheck the browser console for more details.`);
+                    } finally {
+                      setIsProcessingAI(false);
+                    }
+                  }
+                };
+                input.click();
+              }}
+              disabled={isProcessingAI}
+              className="btn-secondary flex items-center space-x-2"
+            >
+              <FileText className="w-4 h-4" />
+              <span>OCR Test</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -4004,10 +4295,10 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                           onClick={() => window.open(assignment.pdfUrl, '_blank')}
                           className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200 transition-colors"
                         >
-                          View PDF
+                          View File
                         </button>
                       ) : (
-                        <span className="text-gray-400 text-xs">No PDF</span>
+                        <span className="text-gray-400 text-xs">No file</span>
                       )}
                       <button
                         onClick={() => handleEditAssignment(assignment)}
@@ -4564,7 +4855,10 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
   };
 
   const handleUploadFile = async () => {
-    if (!uploadFile || !uploadFileName.trim() || !currentUser?.id) return;
+    if (!uploadFile || !uploadFileName.trim() || !currentUser?.id) {
+      showCustomAlertPopup('Error', 'Please select a file and enter a name.', 'error');
+      return;
+    }
     
     // Check storage limits
     const fileSize = uploadFile.size / (1024 * 1024); // Convert to MB
@@ -4576,13 +4870,21 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
     }
     
     try {
+      console.log('Starting file upload:', uploadFileName, 'Size:', fileSize, 'MB');
+      
       const fileType = uploadFile.name.split('.').pop() || '';
       
       // Upload file to Firebase Storage
       const fileName = `${currentUser.id}/${Date.now()}_${uploadFileName.trim()}`;
       const storageRef = ref(storage, `studyFiles/${fileName}`);
+      
+      console.log('Uploading to storage path:', `studyFiles/${fileName}`);
+      
       const uploadResult = await uploadBytes(storageRef, uploadFile);
+      console.log('Upload successful, getting download URL...');
+      
       const fileUrl = await getDownloadURL(uploadResult.ref);
+      console.log('File URL obtained:', fileUrl);
       
       // Determine subject ID based on current folder
       let subjectId = '';
@@ -4639,7 +4941,19 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
       setUploadFileDescription('');
       setShowUploadFileModal(false);
     } catch (error) {
-      showCustomAlertPopup('Error', 'Failed to upload file. Please try again.', 'error');
+      console.error('Error uploading file:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      // Check for specific Firebase errors
+      if (errorMessage.includes('storage/unauthorized')) {
+        showCustomAlertPopup('Error', 'You are not authorized to upload files. Please check your permissions.', 'error');
+      } else if (errorMessage.includes('storage/object-not-found')) {
+        showCustomAlertPopup('Error', 'Storage location not found. Please try again.', 'error');
+      } else if (errorMessage.includes('storage/quota-exceeded')) {
+        showCustomAlertPopup('Error', 'Storage quota exceeded. Please delete some files and try again.', 'error');
+      } else {
+        showCustomAlertPopup('Error', `Failed to upload file: ${errorMessage}`, 'error');
+      }
     }
   };
 
@@ -5340,6 +5654,32 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
         </div>
       </div>
 
+      {/* Data Management */}
+      <div className="card">
+        <div className="flex items-center space-x-3 mb-6">
+          <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+            <HardDrive className="w-6 h-6 text-orange-600" />
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900">Data Management</h3>
+            <p className="text-gray-600">Clear old data and load new ICT course data</p>
+          </div>
+        </div>
+        
+        <div className="space-y-4">
+          <button 
+            onClick={handleClearAllData} 
+            className="w-full flex items-center justify-center space-x-2 bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-lg transition-colors"
+          >
+            <Activity className="w-5 h-5" />
+            <span>Clear All Data & Load ICT Courses</span>
+          </button>
+          <p className="text-sm text-gray-500 text-center">
+            This will clear all existing data and load only the new ICT course subjects and exams.
+          </p>
+        </div>
+      </div>
+
       {/* Account Actions */}
       <div className="card">
         <div className="flex items-center space-x-3 mb-6">
@@ -5685,7 +6025,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  PDF File (Optional)
+                  File (PDF or Image - Optional)
                 </label>
                 <div className="space-y-2">
                   {/* Show existing PDF when editing */}
@@ -5715,7 +6055,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                   
                   <input
                     type="file"
-                    accept=".pdf"
+                    accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp"
                   className="input-field"
                     onChange={(e) => {
                       const file = e.target.files?.[0] || null;
@@ -5895,6 +6235,21 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
             </div>
           </div>
         </div>
+      )}
+
+      {/* AI Assignment Modal */}
+      {showAIAssignmentModal && aiExtractedData && (
+        <AIAssignmentModal
+          isOpen={showAIAssignmentModal}
+          onClose={() => {
+            setShowAIAssignmentModal(false);
+            setAiExtractedData(null);
+            setAiPdfFile(null);
+          }}
+          extractedData={aiExtractedData}
+          onConfirm={handleAIAssignmentConfirm}
+          onEdit={handleAIAssignmentEdit}
+        />
       )}
 
       {/* Exam Modal */}

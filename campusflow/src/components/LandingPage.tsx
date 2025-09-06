@@ -11,6 +11,15 @@ import {
 const LandingPage: React.FC = () => {
   const { signInWithGoogle } = useAuth();
 
+  const handleGoogleSignIn = async () => {
+    try {
+      console.log('Login button clicked');
+      await signInWithGoogle();
+    } catch (error) {
+      console.error('Login failed:', error);
+    }
+  };
+
   const features = [
     {
       icon: AcademicCapIcon,
@@ -97,7 +106,7 @@ const LandingPage: React.FC = () => {
               </span>
             </div>
             <div className="flex items-center space-x-4">
-              <button onClick={signInWithGoogle} className="btn-primary">
+              <button onClick={handleGoogleSignIn} className="btn-primary">
                 Login with Google
               </button>
             </div>
@@ -120,7 +129,7 @@ const LandingPage: React.FC = () => {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button
-                onClick={signInWithGoogle}
+                onClick={handleGoogleSignIn}
                 className="btn-primary text-lg px-8 py-4"
               >
                 Get Started Free
@@ -221,7 +230,7 @@ const LandingPage: React.FC = () => {
                 </ul>
 
                 <button
-                  onClick={signInWithGoogle}
+                  onClick={handleGoogleSignIn}
                   className={`w-full py-3 px-6 rounded-lg font-semibold transition-colors duration-200 ${
                     plan.popular
                       ? 'bg-primary hover:bg-orange-600 text-white'
@@ -247,7 +256,7 @@ const LandingPage: React.FC = () => {
             organized and succeed.
           </p>
           <button
-            onClick={signInWithGoogle}
+            onClick={handleGoogleSignIn}
             className="bg-white text-primary hover:bg-gray-100 font-semibold py-4 px-8 rounded-lg text-lg transition-colors duration-200"
           >
             Start Your Free Trial
