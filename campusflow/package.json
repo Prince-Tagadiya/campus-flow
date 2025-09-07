@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@dnd-kit/modifiers": "^9.0.0",
+    "@google/generative-ai": "^0.24.1",
     "@headlessui/react": "^2.2.7",
     "@heroicons/react": "^2.2.0",
     "@testing-library/dom": "^10.4.1",

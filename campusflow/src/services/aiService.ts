@@ -1,11 +1,8 @@
-import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AI_CONFIG } from '../config/aiConfig';
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: AI_CONFIG.OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true // Only for client-side usage
-});
+// Initialize Google Gemini client
+const genAI = new GoogleGenerativeAI(AI_CONFIG.GEMINI_API_KEY);
 
 export interface AIExtractedAssignment {
   title: string;
@@ -24,69 +21,60 @@ export class AIService {
   static async extractAssignmentDetails(pdfText: string): Promise<AIExtractedAssignment> {
     try {
       // Check if we have a valid API key
-      if (!AI_CONFIG.OPENAI_API_KEY || AI_CONFIG.OPENAI_API_KEY === 'your-openai-api-key-here') {
-        console.log('No OpenAI API key found, using fallback extraction');
+      if (!AI_CONFIG.GEMINI_API_KEY || AI_CONFIG.GEMINI_API_KEY === 'your-gemini-api-key-here') {
+        console.log('No Gemini API key found, using fallback extraction');
         return this.fallbackExtraction(pdfText);
       }
 
-      console.log('Using ChatGPT API for assignment extraction...');
+      console.log('Using Google Gemini API for assignment extraction...');
+
+      const model = genAI.getGenerativeModel({ model: AI_CONFIG.MODEL });
 
       const prompt = `
-        You are an expert academic document analyzer. Analyze the following text extracted from an assignment document and extract key information with high accuracy.
+You are an expert academic document analyzer. Your task is to extract assignment information from the provided text and return it in a structured JSON format.
 
-        IMPORTANT: Return ONLY a valid JSON object with the exact structure below. Do not include any other text or explanations.
+CRITICAL INSTRUCTIONS:
+1. Return ONLY a valid JSON object - no explanations, no markdown, no additional text
+2. Be extremely precise in extracting information
+3. If information is not found, use null for that field
+4. Convert all dates to YYYY-MM-DD format
+5. Extract requirements as an array of strings
 
-        {
-          "title": "Assignment title (extract the main title/name of the assignment)",
-          "description": "Brief description of what the assignment is about",
-          "deadline": "Due date in YYYY-MM-DD format (convert any date format to this standard)",
-          "subject": "Subject/course name (e.g., Mathematics, Computer Science, Physics)",
-          "priority": "high/medium/low (high if due within 3 days, medium if within 2 weeks, low if more than 2 weeks)",
-          "submissionType": "assignment/tutorial/project/exam (choose the most appropriate type)",
-          "instructions": "Main instructions for completing the assignment",
-          "requirements": ["List of specific requirements as separate array items"],
-          "points": "Total points/grade if mentioned (extract number only)",
-          "confidence": "0.1-1.0 confidence score based on how clear the information is"
-        }
+REQUIRED JSON STRUCTURE:
+{
+  "title": "string - Main assignment title/name",
+  "description": "string - Brief description of the assignment",
+  "deadline": "string - Due date in YYYY-MM-DD format or null",
+  "subject": "string - Subject/course name or null",
+  "priority": "string - high/medium/low based on urgency",
+  "submissionType": "string - assignment/tutorial/project/exam",
+  "instructions": "string - Main instructions or null",
+  "requirements": ["array of strings - Each requirement as separate item"],
+  "points": "number - Total points if mentioned or null",
+  "confidence": "number - 0.1 to 1.0 confidence score"
+}
 
-        EXTRACTION RULES:
-        1. For title: Look for "Assignment", "Homework", "Project", "Lab" followed by a number or name
-        2. For deadline: Convert any date format (MM/DD/YYYY, DD/MM/YYYY, "Due by", "Deadline", etc.) to YYYY-MM-DD
-        3. For subject: Look for course codes, subject names, or department names
-        4. For requirements: Extract each requirement as a separate array item
-        5. For points: Extract only the numerical value
-        6. If information is not found, use null for that field
-        7. Be very accurate with confidence scores - only give high confidence (0.8+) if you're very certain
+EXTRACTION GUIDELINES:
+- Title: Look for "Assignment", "Homework", "Project", "Lab" + number/name
+- Deadline: Find dates in any format and convert to YYYY-MM-DD
+- Subject: Extract course codes, subject names, department names
+- Priority: high (due ≤3 days), medium (due ≤2 weeks), low (>2 weeks)
+- Requirements: Each bullet point or numbered item as separate array element
+- Points: Extract only the numerical value
+- Confidence: 0.8+ only if very certain, 0.5-0.7 if somewhat clear, 0.1-0.4 if unclear
 
-        Document text to analyze:
-        ${pdfText.substring(0, 6000)}
+DOCUMENT TEXT TO ANALYZE:
+${pdfText.substring(0, 6000)}
       `;
 
-      const completion = await openai.chat.completions.create({
-        model: AI_CONFIG.MODEL,
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert academic document analyzer. Your job is to extract assignment information from text and return it in a structured JSON format. Always return valid JSON with the exact structure requested. Be precise and accurate in your extractions."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        temperature: AI_CONFIG.TEMPERATURE,
-        max_tokens: AI_CONFIG.MAX_TOKENS
-      });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
 
-      const response = completion.choices[0]?.message?.content;
-      if (!response) {
-        throw new Error('No response from AI');
-      }
-
-      console.log('AI Response:', response);
+      console.log('Gemini Response:', text);
 
       // Clean the response to extract JSON
-      let jsonText = response.trim();
+      let jsonText = text.trim();
       
       // Remove any markdown code blocks if present
       if (jsonText.startsWith('```json')) {
@@ -98,7 +86,7 @@ export class AIService {
       // Parse the JSON response
       const extracted = JSON.parse(jsonText);
       
-      console.log('Parsed AI data:', extracted);
+      console.log('Parsed Gemini data:', extracted);
       
       // Validate and clean the response with better defaults
       return {
@@ -115,7 +103,7 @@ export class AIService {
       };
 
     } catch (error) {
-      console.error('Error extracting assignment details:', error);
+      console.error('Error extracting assignment details with Gemini:', error);
       console.log('Falling back to local extraction');
       return this.fallbackExtraction(pdfText);
     }
