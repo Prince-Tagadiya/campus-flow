@@ -160,6 +160,19 @@ const AIAssignmentModal: React.FC<AIAssignmentModalProps> = ({
               </div>
             )}
 
+            {/* Points */}
+            {extractedData.points && (
+              <div className="flex items-start space-x-3">
+                <Flag className="w-5 h-5 text-indigo-600 mt-1" />
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Points</label>
+                  <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                    <p className="text-gray-900 font-semibold">{extractedData.points} points</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Requirements */}
             {extractedData.requirements && extractedData.requirements.length > 0 && (
               <div className="flex items-start space-x-3">
@@ -181,15 +194,40 @@ const AIAssignmentModal: React.FC<AIAssignmentModalProps> = ({
             )}
           </div>
 
-          {/* Missing Information Alert */}
-          {extractedData.confidence < 0.6 && (
+          {/* Missing Fields Alert */}
+          {extractedData.missingFields && extractedData.missingFields.length > 0 && (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-start space-x-2">
+                <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="text-sm font-medium text-amber-800 mb-2">Please complete these fields manually:</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {extractedData.missingFields.map((field, index) => (
+                      <span
+                        key={index}
+                        className="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full border border-amber-300"
+                      >
+                        {field.charAt(0).toUpperCase() + field.slice(1)}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-sm text-amber-700 mt-2">
+                    These fields couldn't be extracted from the document. You can edit them after creating the assignment.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Low Confidence Alert */}
+          {extractedData.confidence < 0.6 && (!extractedData.missingFields || extractedData.missingFields.length === 0) && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-start space-x-2">
                 <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
                 <div>
-                  <h4 className="text-sm font-medium text-yellow-800">Some details may be missing</h4>
+                  <h4 className="text-sm font-medium text-yellow-800">Low confidence extraction</h4>
                   <p className="text-sm text-yellow-700 mt-1">
-                    The AI had difficulty extracting some information. You can edit the details after confirming.
+                    The AI had difficulty extracting some information. Please review the details carefully.
                   </p>
                 </div>
               </div>

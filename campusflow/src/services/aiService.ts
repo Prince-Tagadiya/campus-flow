@@ -15,6 +15,7 @@ export interface AIExtractedAssignment {
   requirements?: string[];
   points?: number;
   confidence: number;
+  missingFields?: string[]; // Fields that need manual completion
 }
 
 export class AIService {
@@ -31,37 +32,43 @@ export class AIService {
       const model = genAI.getGenerativeModel({ model: AI_CONFIG.MODEL });
 
       const prompt = `
-You are an expert academic document analyzer. Your task is to extract assignment information from the provided text and return it in a structured JSON format.
+You are an expert academic document analyzer. Extract assignment information and create CLEAN, ORGANIZED summaries.
 
-CRITICAL INSTRUCTIONS:
-1. Return ONLY a valid JSON object - no explanations, no markdown, no additional text
-2. Be extremely precise in extracting information
-3. If information is not found, use null for that field
-4. Convert all dates to YYYY-MM-DD format
-5. Extract requirements as an array of strings
+CRITICAL RULES:
+1. Return ONLY valid JSON - no explanations, no markdown
+2. Create BRIEF, CLEAR summaries - NOT the full document text
+3. If information is missing, use null
+4. Convert dates to YYYY-MM-DD format
+5. Extract requirements as clean array items
+6. List missing fields that need manual completion
 
 REQUIRED JSON STRUCTURE:
 {
-  "title": "string - Main assignment title/name",
-  "description": "string - Brief description of the assignment",
+  "title": "string - Clean assignment title (e.g., 'Assignment 1: Data Structures', 'Lab Report 3')",
+  "description": "string - 1-2 sentence summary of what the assignment asks for",
   "deadline": "string - Due date in YYYY-MM-DD format or null",
-  "subject": "string - Subject/course name or null",
+  "subject": "string - Course name/code or null",
   "priority": "string - high/medium/low based on urgency",
   "submissionType": "string - assignment/tutorial/project/exam",
-  "instructions": "string - Main instructions or null",
-  "requirements": ["array of strings - Each requirement as separate item"],
+  "instructions": "string - Key instructions in 1-2 sentences or null",
+  "requirements": ["array of strings - Main requirements only"],
   "points": "number - Total points if mentioned or null",
-  "confidence": "number - 0.1 to 1.0 confidence score"
+  "confidence": "number - 0.1 to 1.0 confidence score",
+  "missingFields": ["array of strings - Fields that need manual completion"]
 }
 
 EXTRACTION GUIDELINES:
-- Title: Look for "Assignment", "Homework", "Project", "Lab" + number/name
-- Deadline: Find dates in any format and convert to YYYY-MM-DD
-- Subject: Extract course codes, subject names, department names
-- Priority: high (due ≤3 days), medium (due ≤2 weeks), low (>2 weeks)
-- Requirements: Each bullet point or numbered item as separate array element
-- Points: Extract only the numerical value
-- Confidence: 0.8+ only if very certain, 0.5-0.7 if somewhat clear, 0.1-0.4 if unclear
+- Title: Extract clean title like "Assignment 1", "Project Report", "Lab 3: Algorithms"
+- Description: Write 1-2 sentences summarizing what students need to do
+- Instructions: Extract main task requirements in 1-2 sentences
+- Requirements: Only include major deliverables, not every detail
+- Missing Fields: List fields that couldn't be extracted (e.g., ["deadline", "points"])
+- Confidence: 0.8+ if very clear, 0.5-0.7 if somewhat clear, 0.1-0.4 if unclear
+
+EXAMPLES:
+Title: "Assignment 1: Binary Search Trees" (not "CS 201 Assignment 1 Binary Search Trees Implementation")
+Description: "Implement a binary search tree with insert, delete, and search operations" (not the full document)
+Instructions: "Write a C++ program that implements BST operations and test with provided data" (not all details)
 
 DOCUMENT TEXT TO ANALYZE:
 ${pdfText.substring(0, 6000)}
@@ -89,7 +96,7 @@ ${pdfText.substring(0, 6000)}
       console.log('Parsed Gemini data:', extracted);
       
       // Validate and clean the response with better defaults
-      return {
+      const extractedAssignment = {
         title: this.cleanText(extracted.title) || 'Untitled Assignment',
         description: this.cleanText(extracted.description) || 'No description available',
         deadline: this.validateDate(extracted.deadline),
@@ -99,8 +106,16 @@ ${pdfText.substring(0, 6000)}
         instructions: this.cleanText(extracted.instructions),
         requirements: this.validateRequirements(extracted.requirements),
         points: this.validatePoints(extracted.points),
-        confidence: Math.min(Math.max(extracted.confidence || 0.5, 0), 1)
+        confidence: Math.min(Math.max(extracted.confidence || 0.5, 0), 1),
+        missingFields: this.validateMissingFields(extracted.missingFields)
       };
+
+      // Auto-detect missing fields if not provided by AI
+      if (!extractedAssignment.missingFields || extractedAssignment.missingFields.length === 0) {
+        extractedAssignment.missingFields = this.detectMissingFields(extractedAssignment);
+      }
+
+      return extractedAssignment;
 
     } catch (error) {
       console.error('Error extracting assignment details with Gemini:', error);
@@ -216,7 +231,7 @@ ${pdfText.substring(0, 6000)}
       description = descLines.join(' ');
     }
 
-    return {
+    const result = {
       title,
       description,
       deadline: deadline || undefined,
@@ -226,8 +241,14 @@ ${pdfText.substring(0, 6000)}
       instructions: instructions || undefined,
       requirements,
       points: points || undefined,
-      confidence
+      confidence,
+      missingFields: [] as string[]
     };
+
+    // Detect missing fields for fallback
+    result.missingFields = this.detectMissingFields(result);
+    
+    return result;
   }
 
   static async extractTextFromFile(file: File): Promise<string> {
@@ -288,6 +309,26 @@ ${pdfText.substring(0, 6000)}
       return isNaN(num) ? undefined : num;
     }
     return undefined;
+  }
+
+  private static validateMissingFields(missingFields: any): string[] {
+    if (!Array.isArray(missingFields)) return [];
+    return missingFields
+      .filter(field => field && typeof field === 'string')
+      .map(field => field.trim())
+      .filter(field => field.length > 0);
+  }
+
+  private static detectMissingFields(result: AIExtractedAssignment): string[] {
+    const missing: string[] = [];
+    
+    if (!result.deadline) missing.push('deadline');
+    if (!result.subject) missing.push('subject');
+    if (!result.points) missing.push('points');
+    if (!result.instructions) missing.push('instructions');
+    if (!result.requirements || result.requirements.length === 0) missing.push('requirements');
+    
+    return missing;
   }
 
 }
