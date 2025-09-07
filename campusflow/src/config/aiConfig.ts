@@ -3,8 +3,8 @@ export const AI_CONFIG = {
   // Google Gemini API Key - Set via environment variable for security
   GEMINI_API_KEY: process.env.REACT_APP_GEMINI_API_KEY || 'your-gemini-api-key-here',
   
-  // AI Model settings - Using Gemini Pro for better accuracy
-  MODEL: 'gemini-pro',
+  // AI Model settings - Using Gemini 1.5 Pro for better accuracy and grounding
+  MODEL: 'gemini-1.5-pro',
   MAX_TOKENS: 1500,
   TEMPERATURE: 0.1, // Lower temperature for more consistent results
   

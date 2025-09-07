@@ -82,29 +82,35 @@ ${pdfText.substring(0, 6000)}
 
       // Clean the response to extract JSON
       let jsonText = text.trim();
-      
-      // Remove any markdown code blocks if present
+
+      // Remove markdown code fences if present
       if (jsonText.startsWith('```json')) {
-        jsonText = jsonText.replace(/```json\n?/, '').replace(/```\n?$/, '');
+        jsonText = jsonText.replace(/^```json\s*/i, '').replace(/\s*```\s*$/i, '');
       } else if (jsonText.startsWith('```')) {
-        jsonText = jsonText.replace(/```\n?/, '').replace(/```\n?$/, '');
+        jsonText = jsonText.replace(/^```\s*/i, '').replace(/\s*```\s*$/i, '');
       }
 
-      // Parse the JSON response
+      // If response still includes extra prose, try to extract the first JSON object
+      if (!(jsonText.trim().startsWith('{') && jsonText.trim().endsWith('}'))) {
+        const match = jsonText.match(/\{[\s\S]*\}/);
+        if (match) jsonText = match[0];
+      }
+
+      // Parse the JSON response (may throw)
       const extracted = JSON.parse(jsonText);
       
       console.log('Parsed Gemini data:', extracted);
       
       // Validate and clean the response with better defaults
       const extractedAssignment = {
-        title: this.cleanText(extracted.title) || 'Untitled Assignment',
-        description: this.cleanText(extracted.description) || 'No description available',
+        title: this.enforceTitle(this.cleanText(extracted.title), pdfText) || 'Untitled Assignment',
+        description: this.enforceSummary(this.cleanText(extracted.description), pdfText, extracted.requirements) || 'No description available',
         deadline: this.validateDate(extracted.deadline),
         subject: this.cleanText(extracted.subject),
         priority: this.validatePriority(extracted.priority),
         submissionType: this.validateSubmissionType(extracted.submissionType),
-        instructions: this.cleanText(extracted.instructions),
-        requirements: this.validateRequirements(extracted.requirements),
+        instructions: this.clampText(this.cleanText(extracted.instructions), 280),
+        requirements: this.clampRequirements(this.validateRequirements(extracted.requirements)),
         points: this.validatePoints(extracted.points),
         confidence: Math.min(Math.max(extracted.confidence || 0.5, 0), 1),
         missingFields: this.validateMissingFields(extracted.missingFields)
@@ -261,6 +267,52 @@ ${pdfText.substring(0, 6000)}
   private static cleanText(text: any): string | undefined {
     if (!text || typeof text !== 'string') return undefined;
     return text.trim().replace(/\s+/g, ' ');
+  }
+
+  // Keep titles short, remove leading noise and clamp length
+  private static enforceTitle(title: string | undefined, source: string): string | undefined {
+    if (!title) return undefined;
+    let t = title
+      .replace(/^title\s*[:\-]\s*/i, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    // Prefer patterns like "Assignment X", "Project", "Lab", if present in title
+    const m = t.match(/(assignment\s*\d+[^\n]*|lab\s*\d+[^\n]*|project[^\n]*|homework\s*\d+[^\n]*)/i);
+    if (m) t = m[1].trim();
+    // Clamp
+    if (t.length > 80) t = t.slice(0, 80).replace(/\s+\S*$/, '');
+    return t;
+  }
+
+  // Ensure description is a short summary (1–2 sentences, <= 220 chars)
+  private static enforceSummary(desc: string | undefined, source: string, reqs: any): string | undefined {
+    const clamp = (s: string) => (s.length > 220 ? s.slice(0, 220).replace(/\s+\S*$/, '') : s);
+    if (desc && desc.split(/[.!?]/).filter(s => s.trim()).length >= 1) {
+      const firstTwo = desc.match(/([^.!?]*[.!?])\s*([^.!?]*[.!?])?/);
+      if (firstTwo) return clamp((firstTwo[1] + (firstTwo[2] || '')).trim());
+      return clamp(desc.trim());
+    }
+    // Build minimal summary from source if model returned long/empty text
+    const firstLines = source
+      .split(/\n+/)
+      .map(l => l.trim())
+      .filter(l => l && !/^subject\s*:/i.test(l) && !/^(deadline|due)\s*:/i.test(l))
+      .slice(0, 3)
+      .join(' ');
+    return clamp(firstLines || 'Assignment details summarized from document');
+  }
+
+  private static clampText(text: string | undefined, maxLen: number): string | undefined {
+    if (!text) return undefined;
+    const t = text.trim();
+    if (t.length <= maxLen) return t;
+    return t.slice(0, maxLen).replace(/\s+\S*$/, '');
+  }
+
+  private static clampRequirements(reqs: string[]): string[] {
+    const max = 6;
+    const clamped = reqs.slice(0, max).map(r => (r.length > 180 ? r.slice(0, 180).replace(/\s+\S*$/, '') : r));
+    return clamped;
   }
 
   private static validateDate(date: any): string | undefined {
