@@ -7,7 +7,7 @@ const firebaseConfig = {
   apiKey: 'AIzaSyAlt64M4TtqwtzGiLnOhKcCK8FUz2yAx3E',
   authDomain: 'campus-flow-a01a1.firebaseapp.com',
   projectId: 'campus-flow-a01a1',
-  storageBucket: 'campus-flow-a01a1.firebasestorage.app',
+  storageBucket: 'campus-flow-a01a1.appspot.com',
   messagingSenderId: '1072114090918',
   appId: '1:1072114090918:web:a5d30fc6f9010941df4567',
 };
