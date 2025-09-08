@@ -3,7 +3,8 @@ import introJs from 'intro.js';
 import 'intro.js/minified/introjs.min.css';
 import { useAuth } from '../contexts/AuthContext';
 import { doc, setDoc, collection, addDoc, updateDoc, deleteDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { saveFileBlob, createObjectUrlFromIdb, deleteFileBlob } from '../services/localFileStore';
 import { db, storage } from '../firebase/config';
 import CustomPopup from './CustomPopup';
 import AIAssignmentModal from './AIAssignmentModal';
@@ -195,26 +196,7 @@ const StudentDashboard: React.FC = () => {
   ]);
 
   // File Manager States
-  const [studyFolders, setStudyFolders] = useState<StudyFolder[]>([
-    {
-      id: 'folder1',
-      studentId: '1',
-      name: 'Lecture Notes',
-      parentId: undefined,
-      subjectId: '1',
-      createdAt: new Date(),
-      color: '#ff6b35',
-    },
-    {
-      id: 'folder2',
-      studentId: '1',
-      name: 'Assignments',
-      parentId: undefined,
-      subjectId: '2',
-      createdAt: new Date(),
-      color: '#ff6b35',
-    },
-  ]);
+  const [studyFolders, setStudyFolders] = useState<StudyFolder[]>([]);
   const [studyFiles, setStudyFiles] = useState<StudyFile[]>([
     {
       id: 'file1',
@@ -1324,6 +1306,56 @@ const StudentDashboard: React.FC = () => {
       setDaysUntilExam(days);
     }
   }, [assignments, exams, studyFiles, storageInfo.limit]);
+
+  // Seed default folders and a sample PDF for all users (local-only if cloud disabled)
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const hasAnyFolder = studyFolders.length > 0;
+    const hasAnyFile = studyFiles.length > 0;
+    if (hasAnyFolder || hasAnyFile) return;
+
+    const forceLocal = (() => { try { return localStorage.getItem('LOCAL_FILE_MODE') === '1'; } catch { return false; } })();
+    const tempOnly = (() => { try { return localStorage.getItem('LOCAL_TEMP_MODE') === '1'; } catch { return false; } })();
+
+    // Create a couple of default folders
+    const now = new Date();
+    const defaultFolders: StudyFolder[] = [
+      { id: `local-folder-${Date.now()}-1`, studentId: currentUser.id, name: 'Materials', createdAt: now, color: '#E5E7EB' },
+      { id: `local-folder-${Date.now()}-2`, studentId: currentUser.id, name: 'Lectures', createdAt: now, color: '#DBEAFE' },
+      { id: `local-folder-${Date.now()}-3`, studentId: currentUser.id, name: 'Notes', createdAt: now, color: '#FEF3C7' },
+    ];
+
+    // Add a sample PDF that points to a public test PDF (no billing needed)
+    const sampleUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+    const firstSubjectId = subjects[0]?.id || '';
+    const firstSubjectName = subjects[0]?.name || '';
+    const sampleFile: StudyFile = {
+      id: `local-sample-${Date.now()}`,
+      studentId: currentUser.id,
+      name: 'Welcome-Sample.pdf',
+      folderId: defaultFolders[0].id,
+      subjectId: firstSubjectId,
+      subjectName: firstSubjectName,
+      fileUrl: sampleUrl,
+      fileSize: 0.12, // approximate MB
+      fileType: 'pdf',
+      createdAt: now,
+      modifiedAt: now,
+    };
+
+    setStudyFolders(defaultFolders);
+    setStudyFiles([sampleFile]);
+
+    // Optionally persist locally across refresh if not temp-only and local mode is on
+    if (forceLocal && !tempOnly) {
+      try {
+        const keyF = `localStudyFolders:${currentUser.id}`;
+        localStorage.setItem(keyF, JSON.stringify(defaultFolders));
+        const keyFi = `localStudyFiles:${currentUser.id}`;
+        localStorage.setItem(keyFi, JSON.stringify([sampleFile]));
+      } catch {}
+    }
+  }, [currentUser?.id, studyFolders.length, studyFiles.length, subjects]);
 
   // Load subjects from Firebase
   useEffect(() => {
@@ -5157,17 +5189,35 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
       
       const fileType = uploadFile.name.split('.').pop() || '';
       
-      // Upload file to Firebase Storage
-      const fileName = `${currentUser.id}/${Date.now()}_${uploadFileName.trim()}`;
-      const storageRef = ref(storage, `studyFiles/${fileName}`);
-      
-      console.log('Uploading to storage path:', `studyFiles/${fileName}`);
-      
-      const uploadResult = await uploadBytes(storageRef, uploadFile);
-      console.log('Upload successful, getting download URL...');
-      
-      const fileUrl = await getDownloadURL(uploadResult.ref);
-      console.log('File URL obtained:', fileUrl);
+      // Try cloud upload first unless local-only mode is enabled
+      let fileUrl: string | undefined;
+      const forceLocal = (() => { try { return localStorage.getItem('LOCAL_FILE_MODE') === '1'; } catch { return false; } })();
+      if (!forceLocal) {
+        try {
+          const fileName = `${currentUser.id}/${Date.now()}_${uploadFileName.trim()}`;
+          const storageRef = ref(storage, `studyFiles/${fileName}`);
+          
+          console.log('Uploading to storage path:', `studyFiles/${fileName}`);
+          const uploadTask = uploadBytesResumable(storageRef, uploadFile);
+          await new Promise<void>((resolve, reject) => {
+            uploadTask.on('state_changed', undefined, reject, () => resolve());
+          });
+          console.log('Upload successful, getting download URL...');
+          fileUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          console.log('File URL obtained:', fileUrl);
+        } catch (cloudErr) {
+          console.warn('Cloud upload failed, falling back to local storage:', cloudErr);
+        }
+      }
+      if (!fileUrl) {
+        // Local fallback: store file as Data URL in localStorage (MVP only)
+        fileUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error('Failed to read file for local storage'));
+          reader.readAsDataURL(uploadFile);
+        });
+      }
       
       // Determine subject ID based on current folder
       let subjectId = '';
@@ -5191,23 +5241,42 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
         }
       }
       
-      const newFile: Omit<StudyFile, 'id'> = {
+      const newFileBase = {
         studentId: currentUser.id,
         name: uploadFileName.trim(),
         folderId: currentFolderId || '',
         subjectId,
         subjectName,
-        fileUrl,
+        fileUrl: fileUrl || '',
         fileSize,
         fileType,
         description: uploadFileDescription,
         createdAt: new Date(),
         modifiedAt: new Date(),
       };
-      
-      const docRef = await addDoc(collection(db, 'studyFiles'), newFile);
-      const fileWithId: StudyFile = { ...newFile, id: docRef.id };
-      
+
+      let fileWithId: StudyFile;
+      if (fileUrl && fileUrl.startsWith('data:')) {
+        // Local-only record (no Firestore write)
+        const localId = `local-${Date.now()}`;
+        fileWithId = { ...(newFileBase as any), id: localId } as StudyFile;
+        // Optionally persist to localStorage unless temp-only mode is enabled
+        try {
+          const isTempOnly = (() => { try { return localStorage.getItem('LOCAL_TEMP_MODE') === '1'; } catch { return false; } })();
+          if (!isTempOnly) {
+            const key = `localStudyFiles:${currentUser.id}`;
+            const existing = localStorage.getItem(key);
+            const arr = existing ? JSON.parse(existing) : [];
+            arr.push(fileWithId);
+            localStorage.setItem(key, JSON.stringify(arr));
+          }
+        } catch {}
+      } else {
+        // Cloud path: write to Firestore as before
+        const docRef = await addDoc(collection(db, 'studyFiles'), newFileBase as any);
+        fileWithId = { ...(newFileBase as any), id: docRef.id } as StudyFile;
+      }
+
       setStudyFiles(prev => [...prev, fileWithId]);
       
       // Show detailed success message
@@ -5269,19 +5338,30 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
   const handleDeleteFile = async (file: StudyFile) => {
     if (window.confirm(`Are you sure you want to delete "${file.name}"?`)) {
       try {
-        // Delete from Firebase Storage if it's a Firebase Storage URL
-        if (file.fileUrl && file.fileUrl.includes('firebasestorage.googleapis.com')) {
+        const isLocal = file.id.startsWith('local-') || (file.fileUrl?.startsWith('data:') ?? false);
+        if (isLocal) {
+          // Remove from localStorage
           try {
-            const fileRef = ref(storage, file.fileUrl);
-            await deleteObject(fileRef);
-          } catch (storageError) {
-            console.warn('Could not delete file from storage:', storageError);
-            // Continue with Firestore deletion even if storage deletion fails
+            const key = `localStudyFiles:${file.studentId}`;
+            const existing = localStorage.getItem(key);
+            if (existing) {
+              const arr = JSON.parse(existing).filter((f: any) => f.id !== file.id);
+              localStorage.setItem(key, JSON.stringify(arr));
+            }
+          } catch {}
+        } else {
+          // Delete from Firebase Storage if it's a Firebase Storage URL
+          if (file.fileUrl && file.fileUrl.includes('firebasestorage.googleapis.com')) {
+            try {
+              const fileRef = ref(storage, file.fileUrl);
+              await deleteObject(fileRef);
+            } catch (storageError) {
+              console.warn('Could not delete file from storage:', storageError);
+            }
           }
+          // Delete from Firestore
+          await deleteDoc(doc(db, 'studyFiles', file.id));
         }
-        
-        // Delete from Firestore
-        await deleteDoc(doc(db, 'studyFiles', file.id));
         setStudyFiles(prev => prev.filter(f => f.id !== file.id));
         showCustomNotificationMessage('File deleted successfully!', 'success');
       } catch (error) {
