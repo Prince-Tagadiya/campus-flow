@@ -251,3 +251,41 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Star this repository if it helped you! ⭐**
 
 </div>
+
+## 🔧 Environment Variables
+
+Create a `.env` file inside `campusflow/` (not committed):
+
+```
+REACT_APP_GEMINI_API_KEY=your_gemini_key
+REACT_APP_FIREBASE_API_KEY=...
+REACT_APP_FIREBASE_AUTH_DOMAIN=...
+REACT_APP_FIREBASE_PROJECT_ID=...
+REACT_APP_FIREBASE_STORAGE_BUCKET=...
+REACT_APP_FIREBASE_MESSAGING_SENDER_ID=...
+REACT_APP_FIREBASE_APP_ID=...
+```
+
+Tip: For local testing you can also set the Gemini key at runtime in DevTools:
+
+```js
+localStorage.setItem('REACT_APP_GEMINI_API_KEY','your_gemini_key');
+location.reload();
+```
+
+## 🚀 Firebase Deployment (from `campusflow/`)
+
+```bash
+npm run build
+firebase deploy
+```
+
+## 🛡️ Anti‑cloning Guidance
+
+You cannot make a pure frontend truly unclonable, but you can raise the bar:
+
+- Use a restrictive license and keep the repo private where possible
+- Gate premium/AI features via a backend token and origin allowlist
+- Never ship secrets in the repo; load from env or server and rotate keys
+- Enforce strict Firebase security rules for authenticated access only
+- Optional obfuscation/watermarking can deter casual copying (not bulletproof)

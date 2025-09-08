@@ -47,7 +47,7 @@ const AIAssignmentModal: React.FC<AIAssignmentModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-xl w-full max-w-3xl max-h-[92vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <div className="flex items-center space-x-3">
@@ -87,7 +87,7 @@ const AIAssignmentModal: React.FC<AIAssignmentModalProps> = ({
               <FileText className="w-5 h-5 text-blue-600 mt-1" />
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 whitespace-nowrap overflow-hidden">
                   <p className="text-gray-900">{extractedData.title}</p>
                 </div>
               </div>
@@ -98,8 +98,8 @@ const AIAssignmentModal: React.FC<AIAssignmentModalProps> = ({
               <BookOpen className="w-5 h-5 text-green-600 mt-1" />
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                  <p className="text-gray-900">{extractedData.description}</p>
+                <div className="p-3 bg-green-50 rounded-lg border border-green-200 overflow-hidden">
+                  <p className="text-gray-900 whitespace-pre-wrap">{extractedData.description}</p>
                 </div>
               </div>
             </div>
@@ -110,7 +110,7 @@ const AIAssignmentModal: React.FC<AIAssignmentModalProps> = ({
                 <Calendar className="w-5 h-5 text-red-600 mt-1" />
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
-                  <div className="p-3 bg-red-50 rounded-lg border border-red-200">
+                  <div className="p-3 bg-red-50 rounded-lg border border-red-200 whitespace-nowrap overflow-hidden">
                     <p className="text-gray-900">{new Date(extractedData.deadline).toLocaleDateString()}</p>
                   </div>
                 </div>
@@ -123,7 +123,7 @@ const AIAssignmentModal: React.FC<AIAssignmentModalProps> = ({
                 <BookOpen className="w-5 h-5 text-purple-600 mt-1" />
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
-                  <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                  <div className="p-3 bg-purple-50 rounded-lg border border-purple-200 whitespace-nowrap overflow-hidden">
                     <p className="text-gray-900">{extractedData.subject}</p>
                   </div>
                 </div>
@@ -160,18 +160,7 @@ const AIAssignmentModal: React.FC<AIAssignmentModalProps> = ({
               </div>
             )}
 
-            {/* Points */}
-            {extractedData.points && (
-              <div className="flex items-start space-x-3">
-                <Flag className="w-5 h-5 text-indigo-600 mt-1" />
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Points</label>
-                  <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
-                    <p className="text-gray-900 font-semibold">{extractedData.points} points</p>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Points removed per request */}
 
             {/* Requirements */}
             {extractedData.requirements && extractedData.requirements.length > 0 && (

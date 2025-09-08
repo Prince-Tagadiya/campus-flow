@@ -67,10 +67,10 @@ const AppContent: React.FC = () => {
   }
 
   if (!currentUser) {
-    // Show the debug page to help troubleshoot
+    // Show original landing page when not authenticated
     return (
       <LazyWrapper fallback="campus" className="min-h-screen">
-        <LoginDebug />
+        <LandingPage />
       </LazyWrapper>
     );
   }

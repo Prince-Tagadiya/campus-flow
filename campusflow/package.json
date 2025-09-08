@@ -17,6 +17,7 @@
     "@types/react-dom": "^19.1.9",
     "firebase": "^12.2.1",
     "framer-motion": "^12.23.12",
+    "intro.js": "^8.3.2",
     "lucide-react": "^0.542.0",
     "openai": "^5.19.1",
     "pdfjs-dist": "^5.4.149",

@@ -36,3 +36,32 @@
     transform: rotate(360deg);
   }
 }
+
+/* Intro.js theme overrides to match CampusFlow */
+.introjs-tooltip {
+  border-radius: 12px;
+  border: 1px solid #e5e7eb; /* gray-200 */
+}
+.introjs-tooltip-header {
+  background: #ffffff;
+  border-bottom: 1px solid #f3f4f6; /* gray-100 */
+}
+.introjs-tooltiptext {
+  color: #111827; /* gray-900 */
+}
+.introjs-helperNumberLayer {
+  background: #4f46e5; /* indigo-600 */
+  box-shadow: none;
+}
+.introjs-button.introjs-nextbutton,
+.introjs-button.introjs-donebutton {
+  background: #4f46e5;
+  border-color: #4f46e5;
+}
+.introjs-button.introjs-nextbutton:hover,
+.introjs-button.introjs-donebutton:hover {
+  background: #4338ca; /* indigo-700 */
+}
+.introjs-button.introjs-skipbutton {
+  color: #6b7280; /* gray-500 */
+}

@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import introJs from 'intro.js';
+import 'intro.js/minified/introjs.min.css';
 import { useAuth } from '../contexts/AuthContext';
 import { doc, setDoc, collection, addDoc, updateDoc, deleteDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -6,6 +8,7 @@ import { db, storage } from '../firebase/config';
 import CustomPopup from './CustomPopup';
 import AIAssignmentModal from './AIAssignmentModal';
 import { AIService, AIExtractedAssignment } from '../services/aiService';
+import MissingInfoModal from './MissingInfoModal';
 import { PDFService } from '../services/pdfService';
 import { OCRService } from '../services/ocrService';
 import {
@@ -258,6 +261,11 @@ const StudentDashboard: React.FC = () => {
   const [showAIAssignmentModal, setShowAIAssignmentModal] = useState(false);
   const [aiExtractedData, setAiExtractedData] = useState<AIExtractedAssignment | null>(null);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
+  const [aiStage, setAiStage] = useState<'idle' | 'uploading' | 'analyzing' | 'completing' | 'done'>('idle');
+  const [aiStageMessage, setAiStageMessage] = useState('');
+  const [aiSubjectNote, setAiSubjectNote] = useState<'missing' | 'added' | null>(null);
+  const [aiTypingShown, setAiTypingShown] = useState('');
+  const [aiTypingTarget, setAiTypingTarget] = useState('');
   const [aiPdfFile, setAiPdfFile] = useState<File | null>(null);
   
   // Context Menu States
@@ -290,6 +298,10 @@ const StudentDashboard: React.FC = () => {
   const [daysUntilExam, setDaysUntilExam] = useState<number>(0);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showExamModal, setShowExamModal] = useState(false);
+  const [showExamAIModal, setShowExamAIModal] = useState(false);
+  const [aiExamFile, setAiExamFile] = useState<File | null>(null);
+  const [parsedExams, setParsedExams] = useState<Array<{ subjectName: string; examDate: string; startTime: string; endTime: string }>>([]);
+  const [parsedExamSubjectIds, setParsedExamSubjectIds] = useState<string[]>([]);
   const [showMaterialModal, setShowMaterialModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showEditExamModal, setShowEditExamModal] = useState(false);
@@ -301,6 +313,21 @@ const StudentDashboard: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [customizeMode, setCustomizeMode] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradePlan, setUpgradePlan] = useState<{ id: 'free' | 'plus' | 'pro'; name: string; limit: number; price: string } | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'auth' | 'processing' | 'success'>('idle');
+  const [showUpgradeTour, setShowUpgradeTour] = useState(false);
+  const examAIFileInputRef = useRef<HTMLInputElement | null>(null);
+  const aiAssignmentFileInputRef = useRef<HTMLInputElement | null>(null);
+  const ocrTestFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  
+
+  const handleStartUpgrade = (plan: { id: 'free' | 'plus' | 'pro'; name: string; limit: number; price: string }) => {
+    setUpgradePlan(plan);
+    setPaymentStatus('idle');
+    setShowUpgradeModal(true);
+  };
 
   // Navigation items
   const navigationItems = [
@@ -312,6 +339,7 @@ const StudentDashboard: React.FC = () => {
     { id: 'notifications', name: 'Notifications', icon: Bell },
     { id: 'storage', name: 'Storage', icon: Cloud },
     { id: 'account', name: 'Account', icon: User },
+    { id: 'pricing', name: 'Upgrade', icon: Cloud },
   ];
 
   // Custom notification and modal states
@@ -557,6 +585,187 @@ const StudentDashboard: React.FC = () => {
     limit: 1000, // 1GB in MB
     percentage: 0,
   });
+  const isPlusPlan = storageInfo.limit >= 10000 && storageInfo.limit < 100000;
+  const isProPlan = storageInfo.limit >= 100000;
+  const isUpgraded = storageInfo.limit > 1000;
+
+  // Ensure Exam AI modal opens reliably and clears any interfering UI
+  const openExamAIFilePicker = useCallback(() => {
+    console.debug('[Exam AI] Button clicked: openExamAIFilePicker');
+    try {
+      setContextMenu({ visible: false, x: 0, y: 0, item: null });
+    } catch {}
+    console.debug('[Exam AI] Closing other UI and switching to Exams page');
+    setCurrentPage('exams');
+    setAiExamFile(null);
+    setParsedExams([]);
+    setParsedExamSubjectIds([]);
+    setShowExamModal(false);
+    setShowExamAIModal(true);
+    // Robustly wait until the modal mounts and input ref is ready
+    let attempts = 0;
+    const maxAttempts = 40; // ~4s
+    const tryClick = () => {
+      const input = examAIFileInputRef.current;
+      console.debug('[Exam AI] Checking for file input ref...', { attempts });
+      if (input) {
+        input.value = '';
+        console.debug('[Exam AI] File input found. Programmatically clicking.');
+        input.click();
+        return;
+      }
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        setTimeout(tryClick, 100);
+      } else {
+        console.error('[Exam AI] Failed to find file input after waiting.');
+      }
+    };
+    setTimeout(tryClick, 50);
+  }, []);
+
+  const handleExamAIFileSelected = useCallback(async (file: File | null) => {
+    console.debug('[Exam AI] File selected handler fired', { hasFile: !!file });
+    if (!file) {
+      console.warn('[Exam AI] No file selected or selection was cancelled');
+      return;
+    }
+    setAiExamFile(file);
+    try {
+      console.debug('[Exam AI] Starting text extraction from file', { name: file.name, size: file.size, type: file.type });
+      const text = await AIService.extractTextFromFile(file);
+      console.debug('[Exam AI] Text extraction complete', { length: text?.length });
+      console.debug('[Exam AI] Starting exam schedule extraction');
+      const exams = await AIService.extractExamSchedule(text);
+      console.debug('[Exam AI] Exam extraction complete', { count: exams?.length });
+      if (!Array.isArray(exams) || exams.length === 0) {
+        console.warn('[Exam AI] No exams detected from extracted text');
+        showCustomAlertPopup('AI Parse', 'Could not detect exam entries. Please try a clearer file.', 'warning');
+        return;
+      }
+      setParsedExams(exams);
+      setParsedExamSubjectIds(new Array(exams.length).fill(''));
+      setShowExamAIModal(true);
+      showCustomNotificationMessage(`Parsed ${exams.length} exam(s). Please verify details.`, 'info');
+    } catch (e) {
+      console.error('[Exam AI] Error during AI processing', e);
+      showCustomAlertPopup('AI Error', 'Failed to read timetable. Try another file.', 'error');
+    }
+  }, []);
+
+  // Simple OCR test flow (images only)
+  const openOcrTestPicker = useCallback(() => {
+    console.debug('[OCR Test] Open picker requested');
+    setCurrentPage('exams');
+    setShowExamAIModal(false);
+    setTimeout(() => {
+      const input = ocrTestFileInputRef.current;
+      if (input) {
+        input.value = '';
+        input.click();
+      } else {
+        console.warn('[OCR Test] File input ref not ready');
+      }
+    }, 50);
+  }, []);
+
+  const handleOcrTestFileSelected = useCallback(async (file: File | null) => {
+    console.debug('[OCR Test] File selected', { hasFile: !!file });
+    if (!file) return;
+    const validation = OCRService.validateImageFile(file);
+    if (!validation.valid) {
+      showCustomAlertPopup('OCR', validation.error || 'Invalid image file', 'warning');
+      return;
+    }
+    try {
+      showCustomNotificationMessage('Running OCR on image...', 'info');
+      const result = await OCRService.extractTextFromImage(file);
+      const preview = (result.text || '').slice(0, 140).replace(/\s+/g, ' ').trim();
+      showCustomAlertPopup('OCR Result', `Conf: ${(result.confidence * 100).toFixed(0)}%\nTime: ${result.processingTime}ms\nText: ${preview}${result.text.length > 140 ? '…' : ''}`, 'info');
+    } catch (e) {
+      console.error('[OCR Test] Failed', e);
+      showCustomAlertPopup('OCR Error', 'Failed to extract text. Try a clearer image.', 'error');
+    }
+  }, []);
+
+  // Assignment AI picker for more reliable triggering
+  const openAssignmentAIFilePicker = useCallback(() => {
+    if (isProcessingAI) return;
+    const input = aiAssignmentFileInputRef.current;
+    if (input) {
+      input.value = '';
+      input.click();
+    }
+  }, [isProcessingAI]);
+
+  // Load upgraded plan limit from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedLimit = localStorage.getItem('cf_plan_limit');
+      if (savedLimit) {
+        const parsed = parseInt(savedLimit, 10);
+        if (!Number.isNaN(parsed) && parsed > 0) {
+          setStorageInfo((s) => ({ ...s, limit: parsed }));
+        }
+      }
+    } catch {}
+  }, []);
+
+  // First-login tour (only show once per user)
+  useEffect(() => {
+    try {
+      const hasSeenTour = localStorage.getItem('cf_seen_first_tour');
+      if (!hasSeenTour) {
+        setTimeout(() => {
+          introJs().setOptions({
+            steps: [
+              { element: '#tour-app-brand', intro: "Welcome to CampusFlow! Let's take a quick tour." },
+              { element: '#tour-nav-dashboard', intro: 'Your dashboard overview and insights.' },
+              { element: '#tour-nav-assignments', intro: 'Manage your assignments and submissions.' },
+              { element: '#tour-nav-exams', intro: 'Track exams and schedules.' },
+              { element: '#tour-nav-storage', intro: 'See storage usage and upgrade if needed.' },
+              { element: '#tour-profile', intro: 'Access your profile and account.' },
+            ],
+            showBullets: false,
+            showProgress: true,
+          }).start();
+          localStorage.setItem('cf_seen_first_tour', '1');
+        }, 600);
+      }
+    } catch {}
+  }, []);
+
+  // Post-upgrade tour effect
+  useEffect(() => {
+    if (showUpgradeTour && isUpgraded) {
+      try {
+        const seen = localStorage.getItem('cf_seen_upgrade_tour') === '1';
+        if (!seen) {
+          setTimeout(() => {
+            try {
+              const tour = introJs();
+              tour.setOptions({
+                steps: [
+                  { element: '#tour-nav-dashboard', intro: 'New AI Assistant added on your dashboard.' },
+                  { element: '#tour-nav-assignments', intro: 'Use AI to extract assignment details.' },
+                  { element: '#tour-nav-storage', intro: 'Enjoy your increased storage here.' }
+                ],
+                showBullets: false,
+                showProgress: true,
+              });
+              tour.onchange((el: Element) => {
+                if (el && el.id === 'tour-nav-dashboard') setCurrentPage('dashboard');
+                if (el && el.id === 'tour-nav-assignments') setCurrentPage('assignments');
+                if (el && el.id === 'tour-nav-storage') setCurrentPage('storage');
+              });
+              tour.start();
+              localStorage.setItem('cf_seen_upgrade_tour', '1');
+            } catch {}
+          }, 800);
+        }
+      } catch {}
+    }
+  }, [showUpgradeTour, isUpgraded]);
 
   // New widget data
   const [subjectProgress, setSubjectProgress] = useState<SubjectProgress[]>([
@@ -585,13 +794,11 @@ const StudentDashboard: React.FC = () => {
     { id: '2', studentId: '1', subjectId: '2', subjectName: 'Physics', marks: 78, maxMarks: 100, grade: 'B+', semester: 'Fall 2024', createdAt: new Date() },
     { id: '3', studentId: '1', subjectId: '3', subjectName: 'Chemistry', marks: 92, maxMarks: 100, grade: 'A', semester: 'Fall 2024', createdAt: new Date() },
   ]);
-
   const [pomodoroSessions, setPomodoroSessions] = useState<PomodoroSession[]>([
     { id: '1', studentId: '1', duration: 25, type: 'work', subjectId: '1', subjectName: 'Mathematics', completedAt: new Date() },
     { id: '2', studentId: '1', duration: 5, type: 'break', completedAt: new Date() },
     { id: '3', studentId: '1', duration: 25, type: 'work', subjectId: '2', subjectName: 'Physics', completedAt: new Date() },
   ]);
-
   const [todos, setTodos] = useState<TodoItem[]>([
     { id: '1', studentId: '1', title: 'Complete Math assignment', description: 'Due tomorrow', completed: false, priority: 'high', dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000), createdAt: new Date() },
     { id: '2', studentId: '1', title: 'Study for Physics exam', description: 'Midterm next week', completed: false, priority: 'medium', dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), createdAt: new Date() },
@@ -1077,11 +1284,14 @@ const StudentDashboard: React.FC = () => {
       0
     );
     const totalSize = assignmentSize + studyFileSize;
-    const percentage = (totalSize / storageInfo.limit) * 100;
-    setStorageInfo({
-      used: totalSize,
-      limit: storageInfo.limit,
-      percentage: Math.min(percentage, 100),
+    setStorageInfo((prev) => {
+      const limit = prev.limit; // preserve current limit (may be upgraded from localStorage)
+      const percentage = (totalSize / limit) * 100;
+      return {
+        used: totalSize,
+        limit,
+        percentage: Math.min(percentage, 100),
+      };
     });
 
     // Find next deadline
@@ -1378,7 +1588,6 @@ const StudentDashboard: React.FC = () => {
       showCustomAlertPopup('Error', 'Failed to duplicate assignment. Please try again.', 'error');
     }
   };
-
   const handleEditAssignment = (assignment: Assignment) => {
     setEditingAssignment(assignment);
     // Pre-fill the form with existing assignment data
@@ -1391,7 +1600,6 @@ const StudentDashboard: React.FC = () => {
     });
     setShowUploadModal(true);
   };
-
   const handleAddAssignment = async (
     assignment: Omit<Assignment, 'id' | 'studentId' | 'createdAt'>
   ) => {
@@ -1968,6 +2176,9 @@ const StudentDashboard: React.FC = () => {
   const handleAIAssignmentUpload = async (file: File) => {
     try {
       setIsProcessingAI(true);
+      setAiStage('uploading');
+      setAiStageMessage('Uploading...');
+      setAiSubjectNote(null);
       
       // Validate file (PDF or image)
       const validation = PDFService.validateFile(file);
@@ -1979,19 +2190,138 @@ const StudentDashboard: React.FC = () => {
       setAiPdfFile(file);
       
       // Extract text from file (PDF or image)
-      const extractedText = await PDFService.extractTextFromFile(file);
+      setAiStage('analyzing');
+      setAiStageMessage('Analyzing with Campus Intelligence...');
+      const rawText = await PDFService.extractTextFromFile(file);
       
       // Extract assignment details using AI
-      const extractedData = await AIService.extractAssignmentDetails(extractedText);
-      
-      setAiExtractedData(extractedData);
-      setShowAIAssignmentModal(true);
+      const subjectHints = subjects
+        .map((s) => [s.name, s.code].filter(Boolean).join(' | '))
+        .filter(Boolean)
+        .join('\n');
+      const enrichedText = `SUBJECT CATALOG (name | code):\n${subjectHints}\n\nDOCUMENT:\n${rawText}`;
+      const extractedData = await AIService.extractAssignmentDetails(enrichedText);
+
+      // Infer/adjust subject from existing subjects
+      let inferredSubjectName: string | undefined;
+      if (subjects && subjects.length > 0) {
+        const textLower = rawText.toLowerCase();
+        const scored = subjects.map((s) => {
+          const nameHit = s.name ? textLower.indexOf(s.name.toLowerCase()) : -1;
+          const codeHit = s.code ? textLower.indexOf(s.code.toLowerCase()) : -1;
+          let score = 0;
+          if (nameHit >= 0) score += 100 + (s.name?.length || 0);
+          if (codeHit >= 0) score += 80 + (s.code?.length || 0);
+          // soft match to AI subject text if present
+          if (extractedData.subject) {
+            const aiLower = extractedData.subject.toLowerCase();
+            if (s.name.toLowerCase().includes(aiLower) || (s.code && s.code.toLowerCase().includes(aiLower))) {
+              score += 120;
+            }
+          }
+          return { subject: s, score };
+        }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+        if ((!extractedData.subject || extractedData.subject.trim() === '') && scored.length > 0) {
+          inferredSubjectName = scored[0].subject.name;
+        } else if (extractedData.subject && scored.length > 0) {
+          // If AI subject is slightly different, prefer nearest known subject instead of asking
+          inferredSubjectName = scored[0].subject.name;
+        }
+      }
+
+      // If AI provided a subject (or we inferred one) but it doesn't match existing subjects, mark subject as missing
+      let needsSubject = false;
+      const subjectCandidate = (inferredSubjectName || extractedData.subject || '').trim();
+      if (subjectCandidate) {
+        const lowered = subjectCandidate.toLowerCase();
+        const match = subjects.some(s => {
+          const nameLower = s.name.toLowerCase();
+          const codeLower = (s.code || '').toLowerCase();
+          return (
+            nameLower.includes(lowered) ||
+            lowered.includes(nameLower) ||
+            (codeLower && codeLower.includes(lowered)) ||
+            (codeLower && lowered.includes(codeLower))
+          );
+        });
+        if (!match) {
+          // If we still didn't match, ask user
+          needsSubject = true;
+        }
+      } else {
+        needsSubject = true;
+      }
+
+      const enforcedMissing = new Set<string>(extractedData.missingFields || []);
+      if (needsSubject) {
+        enforcedMissing.add('subject');
+      } else {
+        enforcedMissing.delete('subject');
+      }
+      // Normalize deadline to ISO first, then decide whether to ask for it
+      const normalizeToISO = (input: string): string => {
+        if (!input) return '';
+        const trimmed = input.trim();
+        // Already ISO
+        if (/^(\d{4})-(\d{2})-(\d{2})$/.test(trimmed)) return trimmed;
+        // dd/mm/yyyy or d/m/yyyy
+        const dmy = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+        if (dmy) {
+          const day = parseInt(dmy[1], 10);
+          const month = parseInt(dmy[2], 10);
+          const year = parseInt(dmy[3].length === 2 ? (parseInt(dmy[3], 10) + 2000).toString() : dmy[3], 10);
+          if (month >= 1 && month <= 12 && day >= 1 && day <= 31 && year >= 1900) {
+            const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            // Validate constructed date
+            const dateObj = new Date(iso);
+            if (!isNaN(dateObj.getTime())) return iso;
+          }
+        }
+        // Try native Date parser as last resort (handles named months)
+        const fallback = new Date(trimmed);
+        if (!isNaN(fallback.getTime())) return fallback.toISOString().split('T')[0];
+        return '';
+      };
+
+      const normalizedDeadline = normalizeToISO(extractedData.deadline || '');
+      if (!normalizedDeadline) {
+        enforcedMissing.add('deadline');
+      } else {
+        enforcedMissing.delete('deadline');
+      }
+      const finalData = { ...extractedData, subject: inferredSubjectName || extractedData.subject, deadline: normalizedDeadline, missingFields: Array.from(enforcedMissing) };
+
+      setAiStage('completing');
+      setAiStageMessage('Completing Details...');
+      setAiTypingTarget(`Subject: ${finalData.subject || '—'}  •  Title: ${finalData.title}  •  Deadline: ${finalData.deadline || '—'}`);
+
+      // Ensure overlay hides before showing any modal (avoid stacking)
+      setAiStage('idle');
+      setAiStageMessage('');
+      setIsProcessingAI(false);
+      setAiExtractedData(finalData);
+      const openDelay = 450; // smooth transition between overlay and modal
+      if (finalData.missingFields && finalData.missingFields.length > 0) {
+        setShowAIAssignmentModal(false);
+        setTimeout(() => setShowMissingInfoModal(true), openDelay);
+      } else {
+        setShowMissingInfoModal(false);
+        setTimeout(() => setShowAIAssignmentModal(true), openDelay);
+      }
       
     } catch (error) {
       console.error('Error processing AI assignment:', error);
       showCustomAlertPopup('Error', 'Failed to process file. Please try again or enter details manually.', 'error');
     } finally {
       setIsProcessingAI(false);
+      setAiStage('done');
+      setAiStageMessage('Done 🎉');
+      setTimeout(() => {
+        setAiStage('idle');
+        setAiStageMessage('');
+        setAiSubjectNote(null);
+        setAiTypingTarget('');
+      }, 900);
     }
   };
 
@@ -2031,7 +2361,7 @@ const StudentDashboard: React.FC = () => {
         deadline: data.deadline ? new Date(data.deadline) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Default to 1 week
         status: 'pending' as const,
         priority: data.priority || 'medium',
-        fileSize: aiPdfFile ? aiPdfFile.size : 0,
+        fileSize: aiPdfFile ? aiPdfFile.size / (1024 * 1024) : 0, // store in MB to match formatFileSize usage
         submissionType: data.submissionType || 'assignment',
         studentId: currentUser.id,
         createdAt: new Date(),
@@ -2041,8 +2371,7 @@ const StudentDashboard: React.FC = () => {
       const docRef = await addDoc(collection(db, 'assignments'), newAssignment);
       const assignmentWithId = { ...newAssignment, id: docRef.id };
 
-      // Update local state
-      setAssignments(prev => [...prev, assignmentWithId]);
+      // Rely on Firestore onSnapshot to update local state (avoid duplicates)
 
       // Reset AI states
       setAiExtractedData(null);
@@ -2074,6 +2403,13 @@ const StudentDashboard: React.FC = () => {
     }
   };
 
+  // Missing Info modal state and submit
+  const [showMissingInfoModal, setShowMissingInfoModal] = useState(false);
+  const handleMissingInfoSubmit = (fixed: AIExtractedAssignment) => {
+    setAiExtractedData(fixed);
+    setShowMissingInfoModal(false);
+    setShowAIAssignmentModal(true);
+  };
   const handleClearAllData = async () => {
     if (!currentUser?.id) return;
     
@@ -3027,7 +3363,6 @@ const StudentDashboard: React.FC = () => {
       </div>
     );
   };
-
   const renderCardById = (c: DashboardCard) => {
     if (c.id === 'deadlines' && nextDeadline) {
       return (
@@ -3939,24 +4274,10 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
           </button>
           
           <div className="relative">
-            <input
-              type="file"
-              accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  handleAIAssignmentUpload(file);
-                }
-              }}
-              className="hidden"
-              id="ai-assignment-upload"
+            <button
+              onClick={openAssignmentAIFilePicker}
+              className={`btn-secondary flex items-center space-x-2 ${isProcessingAI ? 'opacity-50 cursor-not-allowed' : ''}`}
               disabled={isProcessingAI}
-            />
-            <label
-              htmlFor="ai-assignment-upload"
-              className={`btn-secondary flex items-center space-x-2 cursor-pointer ${
-                isProcessingAI ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'
-              }`}
             >
               {isProcessingAI ? (
                 <>
@@ -3969,52 +4290,6 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                   <span>Add with AI</span>
                 </>
               )}
-            </label>
-            
-            <button
-              onClick={() => {
-                // Simple OCR test - open file dialog and process
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp';
-                input.onchange = async (e) => {
-                  const file = (e.target as HTMLInputElement).files?.[0];
-                  if (file) {
-                    try {
-                      setIsProcessingAI(true);
-                      console.log('Starting OCR test with file:', file.name, 'Type:', file.type);
-                      
-                      // Try image first for testing
-                      if (OCRService.getSupportedImageTypes().includes(file.type)) {
-                        console.log('Testing with image file...');
-                        const text = await PDFService.testOCRWithImage(file);
-                        alert(`OCR Test Successful!\n\nExtracted text:\n\n${text.substring(0, 500)}${text.length > 500 ? '...' : ''}`);
-                      } else if (file.type === 'application/pdf') {
-                        console.log('Testing with PDF file...');
-                        try {
-                          const text = await PDFService.extractTextFromFile(file);
-                          alert(`PDF Extraction Successful!\n\nExtracted text:\n\n${text.substring(0, 500)}${text.length > 500 ? '...' : ''}`);
-                        } catch (pdfError) {
-                          alert(`PDF processing failed. This might be due to:\n\n1. PDF.js worker loading issues\n2. Network connectivity problems\n3. PDF file format issues\n\nTry testing with an image file (JPG, PNG) instead.\n\nError: ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}`);
-                        }
-                      } else {
-                        alert('Unsupported file type. Please select a PDF or image file.');
-                      }
-                    } catch (error) {
-                      console.error('OCR test error:', error);
-                      alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\nCheck the browser console for more details.`);
-                    } finally {
-                      setIsProcessingAI(false);
-                    }
-                  }
-                };
-                input.click();
-              }}
-              disabled={isProcessingAI}
-              className="btn-secondary flex items-center space-x-2"
-            >
-              <FileText className="w-4 h-4" />
-              <span>OCR Test</span>
             </button>
           </div>
         </div>
@@ -4389,6 +4664,15 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
               <PlusIcon className="w-5 h-5" />
               <span>Add Exam</span>
             </button>
+            {/* Removed Exams Add with AI per request */}
+            <button
+              onClick={openOcrTestPicker}
+              className="btn-secondary flex items-center space-x-2"
+              title="Run OCR on an image to test extraction"
+            >
+              <Sparkles className="w-5 h-5" />
+              <span>Test OCR</span>
+            </button>
           </div>
         </div>
 
@@ -4517,7 +4801,6 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
       </div>
     );
   };
-
   const renderSubjects = () => (
     <div className="space-y-6">
       <div className="flex items-center justify-end">
@@ -5035,7 +5318,6 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
     // For now, we'll just show a success message
     showCustomNotificationMessage('File manager refreshed!', 'success');
   };
-
   const renderMaterials = () => (
     <div className="h-full flex flex-col bg-gray-50">
       {/* macOS-style Title Bar */}
@@ -5389,12 +5671,209 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
         </div>
       )}
 
+      {/* Exam AI Modal (only show on Exams page) */}
+      {currentPage === 'exams' && showExamAIModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-900">Add Exams with AI</h3>
+              <button onClick={() => setShowExamAIModal(false)} className="text-gray-500 hover:text-gray-700">
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Upload exam timetable (PDF or image)</label>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp"
+                  ref={examAIFileInputRef}
+                  onChange={(e) => handleExamAIFileSelected(e.target.files?.[0] || null)}
+                  className="input-field"
+                />
+              </div>
+              {parsedExams.length > 0 && (
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <h4 className="text-sm font-semibold text-gray-800 mb-3">Review and confirm exams</h4>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-gray-700">
+                          <th className="py-2 pr-3">Subject</th>
+                          <th className="py-2 px-3">Date (YYYY-MM-DD)</th>
+                          <th className="py-2 px-3">Start (HH:MM)</th>
+                          <th className="py-2 px-3">End (HH:MM)</th>
+                          <th className="py-2 pl-3">Subject Map</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {parsedExams.map((ex, idx) => (
+                          <tr key={idx}>
+                            <td className="py-2 pr-3">
+                              <input
+                                type="text"
+                                className="input-field py-2"
+                                value={ex.subjectName}
+                                onChange={(e) => {
+                                  const copy = [...parsedExams];
+                                  copy[idx] = { ...copy[idx], subjectName: e.target.value };
+                                  setParsedExams(copy);
+                                }}
+                                placeholder="Subject name"
+                              />
+                            </td>
+                            <td className="py-2 px-3">
+                              <input
+                                type="text"
+                                className="input-field py-2"
+                                value={ex.examDate}
+                                onChange={(e) => {
+                                  const copy = [...parsedExams];
+                                  copy[idx] = { ...copy[idx], examDate: e.target.value };
+                                  setParsedExams(copy);
+                                }}
+                                placeholder="2025-03-21"
+                              />
+                            </td>
+                            <td className="py-2 px-3">
+                              <input
+                                type="text"
+                                className="input-field py-2"
+                                value={ex.startTime}
+                                onChange={(e) => {
+                                  const copy = [...parsedExams];
+                                  copy[idx] = { ...copy[idx], startTime: e.target.value };
+                                  setParsedExams(copy);
+                                }}
+                                placeholder="09:00"
+                              />
+                            </td>
+                            <td className="py-2 px-3">
+                              <input
+                                type="text"
+                                className="input-field py-2"
+                                value={ex.endTime}
+                                onChange={(e) => {
+                                  const copy = [...parsedExams];
+                                  copy[idx] = { ...copy[idx], endTime: e.target.value };
+                                  setParsedExams(copy);
+                                }}
+                                placeholder="11:00"
+                              />
+                            </td>
+                            <td className="py-2 pl-3">
+                              {!subjects.some(s => s.name.toLowerCase() === (ex.subjectName || '').toLowerCase()) ? (
+                                <select
+                                  className="input-field py-2"
+                                  value={parsedExamSubjectIds[idx] || ''}
+                                  onChange={(e) => {
+                                    const copy = [...parsedExamSubjectIds];
+                                    copy[idx] = e.target.value;
+                                    setParsedExamSubjectIds(copy);
+                                  }}
+                                >
+                                  <option value="">Choose…</option>
+                                  {subjects.map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="text-xs text-green-700">Auto-matched</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">Tip: Edit any field to correct OCR/AI errors. Map subjects if names differ.</p>
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t border-gray-200 bg-gray-50 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowExamAIModal(false)}
+                className="flex-1 btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!aiExamFile) {
+                    showCustomAlertPopup('AI Upload', 'Please upload a timetable file.', 'warning');
+                    return;
+                  }
+                  try {
+                    const text = await AIService.extractTextFromFile(aiExamFile);
+                    const exams = await AIService.extractExamSchedule(text);
+                    if (exams.length === 0) {
+                      showCustomAlertPopup('AI Parse', 'Could not detect exam entries. Please try a clearer file.', 'warning');
+                      return;
+                    }
+                    setParsedExams(exams);
+                    setParsedExamSubjectIds(new Array(exams.length).fill(''));
+                    showCustomNotificationMessage(`Parsed ${exams.length} exam(s). Please verify subjects.`, 'info');
+                  } catch (e) {
+                    showCustomAlertPopup('AI Error', 'Failed to read timetable. Try another file.', 'error');
+                  }
+                }}
+                className="flex-1 btn-secondary"
+              >
+                Parse with AI
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (parsedExams.length === 0) return;
+                  // Validate entries
+                  const invalid = parsedExams.find(ex => !ex.subjectName || !ex.examDate || !ex.startTime || !ex.endTime);
+                  if (invalid) {
+                    showCustomAlertPopup('Missing info', 'Please ensure each row has subject, date, start and end time.', 'warning');
+                    return;
+                  }
+                  for (let i = 0; i < parsedExams.length; i++) {
+                    const ex = parsedExams[i];
+                    let subjectId = subjects.find(s => s.name.toLowerCase() === (ex.subjectName || '').toLowerCase())?.id || parsedExamSubjectIds[i];
+                    if (!subjectId) continue;
+                    const subject = subjects.find(s => s.id === subjectId);
+                    if (!subject) continue;
+                    await handleAddExam({
+                      subjectId: subject.id,
+                      subjectName: subject.name,
+                      examType: 'final',
+                      examDate: new Date(ex.examDate),
+                      startTime: ex.startTime,
+                      endTime: ex.endTime,
+                      room: '',
+                      notes: 'Added via AI timetable',
+                    });
+                  }
+                  setShowExamAIModal(false);
+                  setAiExamFile(null);
+                  setParsedExams([]);
+                  setParsedExamSubjectIds([]);
+                  showCustomNotificationMessage('Exams added from timetable.', 'success');
+                }}
+                className="flex-1 btn-primary"
+              >
+                Confirm & Add Exams
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Click outside to close context menu */}
       {contextMenu.visible && (
         <div
           className="fixed inset-0 z-40"
           onClick={handleCloseContextMenu}
         />
+      )}
+      {/* Auto-close Exam AI modal when leaving Exams page */}
+      {showExamAIModal && currentPage !== 'exams' && (
+        <>{setShowExamAIModal(false)}</>
       )}
     </div>
   );
@@ -5476,7 +5955,6 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
       </div>
     </div>
   );
-
   const renderAccount = () => (
     <div className="space-y-8">
       {/* Header */}
@@ -5800,7 +6278,21 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
     </div>
   );
 
+  const isStorageFull = getRemainingStorage() <= 0;
+
   const renderContent = () => {
+    if (isStorageFull && currentPage !== 'storage') {
+      return (
+        <div className="p-6 w-full">
+          <div className="max-w-2xl mx-auto bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+            <p className="text-red-700 text-sm">
+              Your storage is full. Please free up space in Storage or upgrade your plan to continue using CampusFlow.
+            </p>
+          </div>
+          {renderStorage()}
+        </div>
+      );
+    }
     switch (currentPage) {
       case 'dashboard':
         return renderDashboard();
@@ -5815,18 +6307,99 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
       case 'notifications':
         return renderNotifications();
       case 'storage':
-        return renderStorage();
+        return (
+          <div className="w-full">
+            <div className="flex items-center justify-between p-4">
+              <div className="text-sm text-gray-600">
+                Storage used: {formatFileSize(getTotalUsedStorage() * 1024 * 1024)} of {formatFileSize(storageInfo.limit * 1024 * 1024)}
+              </div>
+              <button
+                className="px-3 py-1.5 bg-indigo-600 text-white rounded-md text-sm hover:bg-indigo-700"
+                onClick={() => setShowUpgradeModal(true)}
+              >
+                Upgrade Plan
+              </button>
+            </div>
+            {renderStorage()}
+          </div>
+        );
       case 'account':
         return renderAccount();
       case 'settings':
         return renderSettings();
+      case 'pricing':
+        return (
+          <div className="max-w-5xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="border rounded-lg p-4">
+                <h4 className="font-semibold mb-1">Free</h4>
+                <p className="text-sm text-gray-600 mb-3">1 GB storage, basic features</p>
+                <div className="text-2xl font-bold mb-4">$0</div>
+                <button disabled className={`w-full px-3 py-2 border rounded-md ${!isUpgraded ? 'text-green-600 border-green-300 bg-green-50' : 'text-gray-500'}`}>{!isUpgraded ? 'Current Plan' : 'Switch'}</button>
+              </div>
+              <div className="border rounded-lg p-4">
+                <h4 className="font-semibold mb-1">Student Plus</h4>
+                <p className="text-sm text-gray-600 mb-3">10 GB storage, priority support</p>
+                <div className="text-2xl font-bold mb-4">$3/mo</div>
+                {isPlusPlan ? (
+                  <button disabled className="w-full px-3 py-2 border rounded-md text-green-600 border-green-300 bg-green-50">Current Plan</button>
+                ) : (
+                  <button onClick={() => handleStartUpgrade({ id: 'plus', name: 'Student Plus', limit: 10000, price: '$3/mo' })} className="w-full px-3 py-2 bg-indigo-600 text-white rounded-md">{isUpgraded ? 'Switch' : 'Upgrade'}</button>
+                )}
+              </div>
+              <div className="border rounded-lg p-4">
+                <h4 className="font-semibold mb-1">Student Pro</h4>
+                <p className="text-sm text-gray-600 mb-3">100 GB storage, all features</p>
+                <div className="text-2xl font-bold mb-4">$7/mo</div>
+                {isProPlan ? (
+                  <button disabled className="w-full px-3 py-2 border rounded-md text-green-600 border-green-300 bg-green-50">Current Plan</button>
+                ) : (
+                  <button onClick={() => handleStartUpgrade({ id: 'pro', name: 'Student Pro', limit: 100000, price: '$7/mo' })} className="w-full px-3 py-2 bg-indigo-600 text-white rounded-md">{isUpgraded ? 'Switch' : 'Upgrade'}</button>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mt-4">Payments are simulated for testing.</p>
+          </div>
+        );
       default:
         return renderDashboard();
     }
   };
-
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      {/* Hidden global Exam AI file input to avoid ref timing issues */}
+      <input
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp"
+        ref={examAIFileInputRef}
+        onChange={(e) => handleExamAIFileSelected(e.target.files?.[0] || null)}
+        style={{ position: 'fixed', left: -9999, width: 1, height: 1, opacity: 0 }}
+        aria-hidden="true"
+        tabIndex={-1}
+      />
+      {/* Hidden AI Assignment input */}
+      <input
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp"
+        ref={aiAssignmentFileInputRef}
+        onChange={(e) => {
+          const f = e.target.files?.[0] || null;
+          if (f) handleAIAssignmentUpload(f);
+        }}
+        style={{ position: 'fixed', left: -9999, width: 1, height: 1, opacity: 0 }}
+        aria-hidden="true"
+        tabIndex={-1}
+      />
+      {/* Hidden OCR test input */}
+      <input
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/gif,image/bmp,image/webp"
+        ref={ocrTestFileInputRef}
+        onChange={(e) => handleOcrTestFileSelected(e.target.files?.[0] || null)}
+        style={{ position: 'fixed', left: -9999, width: 1, height: 1, opacity: 0 }}
+        aria-hidden="true"
+        tabIndex={-1}
+      />
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
@@ -5842,11 +6415,14 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
         }`}
       >
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2" id="tour-app-brand">
             <div className="w-8 h-8 bg-gradient-to-r from-primary to-orange-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">C</span>
             </div>
             <span className="text-xl font-bold text-gray-900">ampusFlow</span>
+          </div>
+          <div className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-md">
+            {isProPlan ? 'Pro' : isPlusPlan ? 'Plus' : 'Free'}
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
@@ -5858,9 +6434,10 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
 
         <nav className="flex-1 mt-4 px-4">
           <ul className="space-y-2">
-            {navigationItems.map((item) => (
+            {(getRemainingStorage() <= 0 ? navigationItems.filter((i) => i.id === 'storage') : navigationItems).map((item) => (
               <li key={item.id}>
                 <button
+                  id={`tour-nav-${item.id}`}
                   onClick={() => {
                     setCurrentPage(item.id);
                     setSidebarOpen(false);
@@ -5892,12 +6469,27 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
 
       {/* Main content */}
       <div className="flex-1 lg:ml-0">
+        {/* Storage Full Popup */}
+        {getRemainingStorage() <= 0 && currentPage !== 'storage' && currentPage !== 'exams' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Storage is full</h3>
+              <p className="text-sm text-gray-700 mb-4">Please free up space in Storage or upgrade your plan to continue. You can also logout and return later.</p>
+              <div className="flex items-center justify-end gap-2">
+                <button onClick={handleLogout} className="px-3 py-1.5 border rounded-md text-gray-700">Logout</button>
+                <button onClick={() => setCurrentPage('storage')} className="px-3 py-1.5 border rounded-md">Go to Storage</button>
+                <button onClick={() => setShowUpgradeModal(true)} className="px-3 py-1.5 bg-indigo-600 text-white rounded-md">Upgrade</button>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Top navigation */}
         <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-30">
           <div className="px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center py-4">
               <div className="flex items-center space-x-4">
                 <button
+                  id="tour-open-menu"
                   onClick={() => setSidebarOpen(true)}
                   className="lg:hidden p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
                   aria-label="Open menu"
@@ -5914,7 +6506,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
 
               <div className="flex items-center space-x-4">
                 <div className="relative">
-                  <button className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors">
+                  <button className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors" id="tour-profile">
                     <img
                       src={
                         currentUser?.photoURL ||
@@ -5935,9 +6527,147 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
 
         {/* Page content */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {(isProcessingAI || aiStage !== 'idle') && (
+            <div className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center">
+              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 animate-pulse"></div>
+              <div className="relative pointer-events-auto w-full max-w-xl mx-4 p-6 rounded-2xl shadow-2xl bg-white/90 border border-purple-200 backdrop-blur">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    <span className="animate-bounce">✨</span>
+                    <span>Campus Intelligence</span>
+                  </div>
+                  <div className="text-sm text-gray-600">{aiStageMessage}</div>
+                </div>
+                {/* Progress bar removed per request; using descriptive stage text below */}
+                <div className="min-h-[44px] font-mono text-sm text-gray-800 whitespace-pre-wrap">
+                  <span className="text-gray-700">
+                    {aiStage === 'uploading' && 'Detecting file…'}
+                    {aiStage === 'analyzing' && 'Extracting text and analyzing information…'}
+                    {aiStage === 'completing' && 'Completing details…'}
+                    {aiStage === 'done' && 'Done 🎉'}
+                  </span>
+                </div>
+                {aiSubjectNote === 'missing' && (
+                  <div className="mt-4 text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 text-sm">⚠️ Subject missing – auto-detecting with Campus Intelligence…</div>
+                )}
+                {aiSubjectNote === 'added' && (
+                  <div className="mt-4 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 text-sm">✅ Subject added successfully.</div>
+                )}
+                <div className="absolute -top-2 -right-2 text-2xl animate-ping">📚</div>
+                <div className="absolute -bottom-3 left-6 text-2xl animate-bounce">✨</div>
+                <div className="absolute -top-4 left-10 text-2xl animate-pulse">🪄</div>
+              </div>
+            </div>
+          )}
           {renderContent()}
         </div>
       </div>
+
+      {/* Upgrade Modal */}
+      {showUpgradeModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl w-full max-w-md overflow-hidden">
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Upgrade Plan</h3>
+              <button onClick={() => setShowUpgradeModal(false)} className="text-gray-500 hover:text-gray-700">
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {!upgradePlan && (
+                <>
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="border rounded-lg p-4">
+                      <h4 className="font-semibold mb-1">Free</h4>
+                      <p className="text-sm text-gray-600 mb-2">1 GB storage, basic features</p>
+                      <div className="text-xl font-bold mb-3">$0</div>
+                      <button disabled className="w-full px-3 py-2 border rounded-md text-gray-500">Current Plan</button>
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <h4 className="font-semibold mb-1">Student Plus</h4>
+                      <p className="text-sm text-gray-600 mb-2">10 GB storage, priority support</p>
+                      <div className="text-xl font-bold mb-3">$3/mo</div>
+                      <button onClick={() => handleStartUpgrade({ id: 'plus', name: 'Student Plus', limit: 10000, price: '$3/mo' })} className="w-full px-3 py-2 bg-indigo-600 text-white rounded-md">Upgrade</button>
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <h4 className="font-semibold mb-1">Student Pro</h4>
+                      <p className="text-sm text-gray-600 mb-2">100 GB storage, all features</p>
+                      <div className="text-xl font-bold mb-3">$7/mo</div>
+                      <button onClick={() => handleStartUpgrade({ id: 'pro', name: 'Student Pro', limit: 100000, price: '$7/mo' })} className="w-full px-3 py-2 bg-indigo-600 text-white rounded-md">Upgrade</button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500">Payments are simulated for testing.</p>
+                </>
+              )}
+              {upgradePlan && (
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <h4 className="text-base font-semibold text-gray-900">{upgradePlan.name}</h4>
+                    <p className="text-sm text-gray-600">{upgradePlan.price} • {upgradePlan.limit >= 1000 ? `${Math.round(upgradePlan.limit/1000)} GB` : `${upgradePlan.limit} MB`} storage</p>
+                  </div>
+                  <div className="space-y-3">
+                    <div className={`flex items-center gap-3 p-3 rounded-lg border ${paymentStatus !== 'idle' ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200'}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${paymentStatus === 'auth' || paymentStatus === 'processing' || paymentStatus === 'success' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'}`}>1</div>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">Authenticating user</div>
+                        <div className="text-xs text-gray-500">Verifying account...</div>
+                      </div>
+                      {paymentStatus === 'success' && <CheckIcon className="w-5 h-5 text-green-600" />}
+                    </div>
+                    <div className={`flex items-center gap-3 p-3 rounded-lg border ${paymentStatus === 'processing' || paymentStatus === 'success' ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200'}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${paymentStatus === 'processing' || paymentStatus === 'success' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'}`}>2</div>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">Confirming payment</div>
+                        <div className="text-xs text-gray-500">Processing transaction...</div>
+                      </div>
+                      {paymentStatus === 'success' && <CheckIcon className="w-5 h-5 text-green-600" />}
+                    </div>
+                    <div className={`flex items-center gap-3 p-3 rounded-lg border ${paymentStatus === 'success' ? 'border-green-200 bg-green-50' : 'border-gray-200'}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${paymentStatus === 'success' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-500'}`}>3</div>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">All set!</div>
+                        <div className="text-xs text-gray-500">Plan activated • Enjoy more storage</div>
+                      </div>
+                      {paymentStatus === 'success' && <Sparkles className="w-5 h-5 text-green-600" />}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button onClick={() => { setUpgradePlan(null); setPaymentStatus('idle'); }} className="px-3 py-2 border rounded-md">Back</button>
+                    <button
+                      onClick={async () => {
+                        if (paymentStatus === 'idle') {
+                          setPaymentStatus('auth');
+                          await new Promise(r => setTimeout(r, 1000));
+                          setPaymentStatus('processing');
+                          await new Promise(r => setTimeout(r, 1200));
+                          setPaymentStatus('success');
+                          setStorageInfo((s) => ({ ...s, limit: upgradePlan.limit }));
+                          try { localStorage.setItem('cf_plan_limit', String(upgradePlan.limit)); } catch {}
+                          showCustomNotificationMessage(`Payment successful! Plan upgraded to ${upgradePlan.name}.`, 'success');
+                          setShowUpgradeTour(true);
+                          try {
+                            localStorage.setItem('cf_seen_upgrade_tour', '0');
+                          } catch {}
+                          setTimeout(() => {
+                            setShowUpgradeModal(false);
+                            setUpgradePlan(null);
+                            setPaymentStatus('idle');
+                            // Close modal; state already updated and persisted
+                          }, 1200);
+                        }
+                      }}
+                      className={`px-3 py-2 rounded-md text-white ${paymentStatus === 'idle' ? 'bg-indigo-600 hover:bg-indigo-700' : paymentStatus === 'success' ? 'bg-green-600' : 'bg-indigo-400'}`}
+                      disabled={paymentStatus !== 'idle'}
+                    >
+                      {paymentStatus === 'idle' ? 'Pay now' : paymentStatus === 'auth' ? 'Authenticating...' : paymentStatus === 'processing' ? 'Processing...' : 'Success'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upload Modal */}
       {showUploadModal && (
@@ -5983,14 +6713,10 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                   className="input-field"
                   value={assignmentForm.subjectId}
                     onChange={(e) => {
-                      if (e.target.value === 'add-new') {
-                        setShowSubjectsModal(true);
-                      } else {
-                    setAssignmentForm({
-                      ...assignmentForm,
-                      subjectId: e.target.value,
-                        });
-                  }
+                      setAssignmentForm({
+                        ...assignmentForm,
+                        subjectId: e.target.value,
+                      });
                     }}
                   required
                 >
@@ -6000,7 +6726,6 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                       {subject.name}
                     </option>
                   ))}
-                    <option value="add-new">+ Add New Subject</option>
                 </select>
               </div>
               <div>
@@ -6174,68 +6899,138 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                 >
                   Cancel
                 </button>
-                <button 
-                  type="button" 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    const subject = subjects.find(
-                      (s) => s.id === assignmentForm.subjectId
-                    );
-                    if (subject) {
-                      const autoPriority = calculateAutoPriority(assignmentForm.deadline);
-                      const fileSize = assignmentForm.pdfFile ? assignmentForm.pdfFile.size / (1024 * 1024) : 0;
-                      
-                      // Store the editing assignment in a local variable to prevent race conditions
-                      const currentEditingAssignment = editingAssignment;
-                      
-                      if (currentEditingAssignment) {
-                        // Update existing assignment
-                        handleUpdateAssignment(currentEditingAssignment.id, {
-                          title: assignmentForm.title,
-                          subjectId: assignmentForm.subjectId,
-                          subjectName: subject.name,
-                          pdfUrl: assignmentForm.pdfFile ? URL.createObjectURL(assignmentForm.pdfFile) : currentEditingAssignment.pdfUrl,
-                          deadline: new Date(assignmentForm.deadline),
-                          status: currentEditingAssignment.status, // Keep existing status
-                          priority: autoPriority,
-                          fileSize: fileSize || currentEditingAssignment.fileSize,
-                          submissionType: assignmentForm.submissionType,
-                        });
-                      } else {
-                        // Add new assignment
-                        handleAddAssignment({
-                          title: assignmentForm.title,
-                          subjectId: assignmentForm.subjectId,
-                          subjectName: subject.name,
-                          pdfUrl: assignmentForm.pdfFile ? URL.createObjectURL(assignmentForm.pdfFile) : '',
-                          deadline: new Date(assignmentForm.deadline),
-                          status: 'pending',
-                          priority: autoPriority,
-                          fileSize: fileSize,
-                          submissionType: assignmentForm.submissionType,
+                {isUpgraded ? (
+                  <button
+                    type="button" 
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const subject = subjects.find(
+                        (s) => s.id === assignmentForm.subjectId
+                      );
+                      if (subject) {
+                        const autoPriority = calculateAutoPriority(assignmentForm.deadline);
+                        const fileSize = assignmentForm.pdfFile ? assignmentForm.pdfFile.size / (1024 * 1024) : 0;
+                        
+                        // Store the editing assignment in a local variable to prevent race conditions
+                        const currentEditingAssignment = editingAssignment;
+                        
+                        if (currentEditingAssignment) {
+                          // Update existing assignment
+                          handleUpdateAssignment(currentEditingAssignment.id, {
+                            title: assignmentForm.title,
+                            subjectId: assignmentForm.subjectId,
+                            subjectName: subject.name,
+                            pdfUrl: assignmentForm.pdfFile ? URL.createObjectURL(assignmentForm.pdfFile) : currentEditingAssignment.pdfUrl,
+                            deadline: new Date(assignmentForm.deadline),
+                            status: currentEditingAssignment.status, // Keep existing status
+                            priority: autoPriority,
+                            fileSize: fileSize || currentEditingAssignment.fileSize,
+                            submissionType: assignmentForm.submissionType,
+                          });
+                        } else {
+                          // Add new assignment
+                          handleAddAssignment({
+                            title: assignmentForm.title,
+                            subjectId: assignmentForm.subjectId,
+                            subjectName: subject.name,
+                            pdfUrl: assignmentForm.pdfFile ? URL.createObjectURL(assignmentForm.pdfFile) : '',
+                            deadline: new Date(assignmentForm.deadline),
+                            status: 'pending',
+                            priority: autoPriority,
+                            fileSize: fileSize,
+                            submissionType: assignmentForm.submissionType,
+                          });
+                        }
+                        
+                        setShowUploadModal(false);
+                        setEditingAssignment(null);
+                        setAssignmentForm({
+                          title: '',
+                          subjectId: '',
+                          submissionType: 'assignment',
+                          deadline: '',
+                          pdfFile: null,
                         });
                       }
-                      
-                      setShowUploadModal(false);
-                      setEditingAssignment(null);
-                      setAssignmentForm({
-                        title: '',
-                        subjectId: '',
-                        submissionType: 'assignment',
-                        deadline: '',
-                        pdfFile: null,
-                      });
-                    }
-                  }}
-                  className="flex-1 btn-primary"
-                >
-                  {editingAssignment ? 'Update Assignment' : 'Add Assignment'}
-                </button>
+                    }}
+                    className="flex-1 btn-primary"
+                  >
+                    {editingAssignment ? 'Update Assignment' : 'Add Assignment'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowUpgradeModal(true)}
+                    className="flex-1 btn-primary"
+                  >
+                    Unlock AI Assistant
+                  </button>
+                )}
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Upgrade Tour (robot/teacher style) */}
+      {showUpgradeTour && isUpgraded && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl max-w-md w-full p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center">
+                🤖
+              </div>
+              <h4 className="text-lg font-semibold text-gray-900">Welcome to your upgraded CampusFlow!</h4>
+            </div>
+            <ul className="text-sm text-gray-700 space-y-2 mb-4 list-disc list-inside">
+              <li>New AI Assistant on your dashboard for smart study tips.</li>
+              <li>AI-powered Assignment helper: extract details from PDFs and images.</li>
+              <li>Priority features and larger storage unlocked.</li>
+            </ul>
+            <div className="flex justify-end gap-2">
+              <button 
+                onClick={() => {
+                  try { localStorage.setItem('cf_seen_upgrade_tour', '1'); } catch {}
+                  setShowUpgradeTour(false);
+                }} 
+                className="px-3 py-2 border rounded-md"
+              >
+                Maybe later
+              </button>
+              <button 
+                onClick={() => { 
+                  setShowUpgradeTour(false); 
+                  setCurrentPage('dashboard'); 
+                  try {
+                    const tour = introJs();
+                    tour.setOptions({
+                      steps: [
+                        { element: '#tour-nav-dashboard', intro: 'New AI Assistant added on your dashboard.' },
+                        { element: '#tour-nav-assignments', intro: 'Use AI to extract assignment details.' },
+                        { element: '#tour-nav-storage', intro: 'Enjoy your increased storage here.' }
+                      ],
+                      showBullets: false,
+                      showProgress: true,
+                    });
+                    tour.onchange((el: Element) => {
+                      if (el && el.id === 'tour-nav-dashboard') setCurrentPage('dashboard');
+                      if (el && el.id === 'tour-nav-assignments') setCurrentPage('assignments');
+                      if (el && el.id === 'tour-nav-storage') setCurrentPage('storage');
+                    });
+                    tour.start();
+                    localStorage.setItem('cf_seen_upgrade_tour', '1');
+                  } catch {}
+                }} 
+                className="px-3 py-2 bg-indigo-600 text-white rounded-md"
+              >
+                Show me
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Post-upgrade guided tour handled via the modal's Show me button */}
 
       {/* AI Assignment Modal */}
       {showAIAssignmentModal && aiExtractedData && (
@@ -6252,13 +7047,31 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
         />
       )}
 
+      {/* Missing Info Modal */}
+      {showMissingInfoModal && aiExtractedData && (
+        <MissingInfoModal
+          isOpen={showMissingInfoModal}
+          onClose={() => setShowMissingInfoModal(false)}
+          missingFields={aiExtractedData.missingFields || []}
+          subjects={subjects.map(s => ({ id: s.id, name: s.name, code: s.code }))}
+          initialData={aiExtractedData}
+          onSubmit={handleMissingInfoSubmit}
+        />
+      )}
       {/* Exam Modal */}
       {showExamModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">
-              Add New Exam
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">Add New Exam</h3>
+              <button
+                type="button"
+                onClick={openExamAIFilePicker}
+                className="text-sm px-3 py-1.5 bg-indigo-600 text-white rounded-md"
+              >
+                Use AI (Upload Timetable)
+              </button>
+            </div>
             <form
               className="space-y-4"
               onSubmit={(e) => {
@@ -6287,13 +7100,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                 <select
                   className="input-field"
                   value={examForm.subjectId}
-                  onChange={(e) => {
-                    if (e.target.value === 'add-new') {
-                      setShowSubjectsModal(true);
-                    } else {
-                      setExamForm({ ...examForm, subjectId: e.target.value });
-                    }
-                  }}
+                  onChange={(e) => setExamForm({ ...examForm, subjectId: e.target.value })}
                   required
                 >
                   <option value="">Select Subject</option>
@@ -6302,7 +7109,6 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                       {subject.name}
                     </option>
                   ))}
-                  <option value="add-new">+ Add New Subject</option>
                 </select>
               </div>
               <div>
@@ -6438,11 +7244,6 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                 </label>
                 <select 
                   className="input-field"
-                  onChange={(e) => {
-                    if (e.target.value === 'add-new') {
-                      setShowSubjectsModal(true);
-                    }
-                  }}
                 >
                   <option value="">Select Subject</option>
                   {subjects.map((subject) => (
@@ -6450,7 +7251,6 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                       {subject.name}
                     </option>
                   ))}
-                  <option value="add-new">+ Add New Subject</option>
                 </select>
               </div>
               <div>
@@ -6694,13 +7494,7 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                 <select
                   className="input-field"
                   value={examForm.subjectId}
-                  onChange={(e) => {
-                    if (e.target.value === 'add-new') {
-                      setShowSubjectsModal(true);
-                    } else {
-                      setExamForm({ ...examForm, subjectId: e.target.value });
-                    }
-                  }}
+                  onChange={(e) => setExamForm({ ...examForm, subjectId: e.target.value })}
                   required
                 >
                   <option value="">Select Subject</option>
@@ -6709,7 +7503,6 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                       {subject.name}
                     </option>
                   ))}
-                  <option value="add-new">+ Add New Subject</option>
                 </select>
               </div>
               <div>
@@ -7027,16 +7820,17 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                   </svg>
-      )}
-    </div>
+                )}
+              </div>
               <div className="flex-1">
                 <p className="text-sm font-medium">{notificationMessage}</p>
               </div>
               <button
+                type="button"
                 onClick={() => setShowCustomNotification(false)}
-                className="flex-shrink-0 text-white hover:text-gray-200"
+                className="text-white hover:text-gray-200 focus:outline-none"
               >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
               </button>
@@ -7044,90 +7838,48 @@ function CardWithRemove({ card, onRemove, children }: { card: DashboardCard; onR
           </div>
         </div>
       )}
+      {/* Legacy AI Assignment upload popup removed */}
 
-      {/* Custom Confirm Modal */}
-      {showConfirmModal && confirmModalData && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
-              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
-        </div>
-
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <div className={`px-4 pt-5 pb-4 sm:p-6 sm:pb-4 ${
-                confirmModalData.type === 'danger' ? 'border-l-4 border-red-500' :
-                confirmModalData.type === 'warning' ? 'border-l-4 border-yellow-500' :
-                'border-l-4 border-blue-500'
-              }`}>
-                <div className="sm:flex sm:items-start">
-                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10">
-                    {confirmModalData.type === 'danger' && (
-                      <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                      </svg>
-                    )}
-                    {confirmModalData.type === 'warning' && (
-                      <svg className="h-6 w-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                      </svg>
-                    )}
-                    {confirmModalData.type === 'info' && (
-                      <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    )}
-                  </div>
-                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                    <h3 className="text-lg leading-6 font-medium text-gray-900">
-                      {confirmModalData.title}
-                    </h3>
-                    <div className="mt-2">
-                      <p className="text-sm text-gray-500">
-                        {confirmModalData.message}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+      {/* AI Processing Overlay */}
+      {false && isProcessingAI && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">AI Processing</h3>
+            </div>
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 rounded-full animate-pulse bg-blue-500"></div>
+                <p className="text-sm font-medium text-gray-700">{aiStageMessage}</p>
               </div>
-              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                <button
-                  type="button"
-                  onClick={handleConfirmModalConfirm}
-                  className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm ${
-                    confirmModalData.type === 'danger' ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' :
-                    confirmModalData.type === 'warning' ? 'bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-500' :
-                    'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
-                  }`}
-                >
-                  {confirmModalData.confirmText}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmModalCancel}
-                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-                >
-                  {confirmModalData.cancelText}
-                </button>
-        </div>
-      </div>
+              {aiStage === 'analyzing' && (
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 rounded-full animate-pulse bg-blue-500"></div>
+                  <p className="text-sm font-medium text-gray-700">Analyzing PDF...</p>
+                </div>
+              )}
+              {aiStage === 'completing' && (
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 rounded-full animate-pulse bg-blue-500"></div>
+                  <p className="text-sm font-medium text-gray-700">Completing extraction...</p>
+                </div>
+              )}
+              {aiStage === 'done' && (
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 rounded-full bg-green-500"></div>
+                  <p className="text-sm font-medium text-gray-700">Extraction completed!</p>
+                </div>
+              )}
+              {aiTypingShown && (
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 rounded-full animate-pulse bg-blue-500"></div>
+                  <p className="text-sm font-medium text-gray-700">{aiTypingShown}</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
-
-
-
-
-
-      {/* Custom Alert Popup */}
-      <CustomPopup
-        isOpen={showCustomAlert}
-        onClose={() => setShowCustomAlert(false)}
-        title={alertConfig.title}
-        message={alertConfig.message}
-        type={alertConfig.type}
-        onConfirm={alertConfig.onConfirm}
-        confirmText="OK"
-      />
     </div>
   );
 };
