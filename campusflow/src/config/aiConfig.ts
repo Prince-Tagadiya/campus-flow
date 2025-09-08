@@ -10,7 +10,7 @@ const runtimeGeminiKey = (() => {
 
 export const AI_CONFIG = {
   // Google Gemini API Key - Prefer env at build time; fallback to localStorage at runtime
-  GEMINI_API_KEY: process.env.REACT_APP_GEMINI_API_KEY || runtimeGeminiKey || 'AIzaSyCSJCcYk0RapEJmEV0d022dn7_rDIP5g9w',
+  GEMINI_API_KEY: process.env.REACT_APP_GEMINI_API_KEY || runtimeGeminiKey || '',
   
   // AI Model settings - Using Gemini 1.5 Pro for better accuracy and grounding
   MODEL: 'gemini-1.5-pro',
@@ -27,4 +27,4 @@ export const AI_CONFIG = {
 // 1. Go to https://makersuite.google.com/app/apikey
 // 2. Create a new API key
 // 3. Add it to your .env file: REACT_APP_GEMINI_API_KEY=your_key_here
-// 4. Or replace the key directly in this file (not recommended for production)
+// 4. Do NOT hardcode keys in the repo. Use env or runtime localStorage only.
