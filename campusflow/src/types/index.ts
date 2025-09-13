@@ -379,20 +379,11 @@ export interface StudentAttendance {
   lastAttendance?: Date;
   courseId: string;
   courseName: string;
+  subjectId?: string;
+  subjectName?: string;
+  semester?: number;
 }
 
-export interface Course {
-  id: string;
-  name: string;
-  code: string;
-  facultyId: string;
-  facultyName: string;
-  semester: string;
-  year: string;
-  branch: string;
-  totalStudents: number;
-  createdAt: Date;
-}
 
 export interface Branch {
   id: string;
@@ -410,6 +401,7 @@ export interface Course {
   duration: number; // in semesters
   branchId: string;
   branchName: string;
+  totalStudents?: number;
   createdAt: Date;
 }
 

@@ -90,6 +90,8 @@ import {
   MotivationQuote,
   QuickNote,
   AISuggestion,
+  StudentAttendance,
+  SemesterSubject,
 } from '../types';
 import { motion } from 'framer-motion';
 import MobileStudentDashboard from './MobileStudentDashboard';
@@ -103,12 +105,12 @@ const StudentDashboard: React.FC = () => {
   const [isMobile, setIsMobile] = useState(false);
   const [attendance, setAttendance] = useState<StudentAttendance[]>([]);
   const [courseInfo, setCourseInfo] = useState<{
-    courseId: string;
-    courseName: string;
-    courseCode: string;
-    branchId: string;
-    branchName: string;
-    subjects: SemesterSubject[];
+    courseId?: string;
+    courseName?: string;
+    courseCode?: string;
+    branchId?: string;
+    branchName?: string;
+    subjects?: SemesterSubject[];
   } | undefined>();
 
   useEffect(() => {
@@ -144,19 +146,6 @@ const StudentDashboard: React.FC = () => {
     ]);
   }, [currentUser]);
 
-  // Return mobile dashboard for small screens
-  if (isMobile) {
-    return (
-      <MobileStudentDashboard
-        assignments={assignments}
-        exams={exams}
-        subjects={subjects}
-        attendance={attendance}
-        courseInfo={courseInfo}
-      />
-    );
-  }
-  
   // (RGL style injection removed)
   const [assignments, setAssignments] = useState<Assignment[]>([
     {
@@ -2778,6 +2767,19 @@ const StudentDashboard: React.FC = () => {
   const getRemainingStorage = () => {
     return storageInfo.limit - getTotalUsedStorage();
   };
+
+  // Return mobile dashboard for small screens
+  if (isMobile) {
+    return (
+      <MobileStudentDashboard
+        assignments={assignments}
+        exams={exams}
+        subjects={subjects}
+        attendance={attendance}
+        courseInfo={courseInfo}
+      />
+    );
+  }
 
   const renderDashboard = () => {
     return (

@@ -30,12 +30,12 @@ interface MobileStudentDashboardProps {
   subjects: Subject[];
   attendance: StudentAttendance[];
   courseInfo?: {
-    courseId: string;
-    courseName: string;
-    courseCode: string;
-    branchId: string;
-    branchName: string;
-    subjects: SemesterSubject[];
+    courseId?: string;
+    courseName?: string;
+    courseCode?: string;
+    branchId?: string;
+    branchName?: string;
+    subjects?: SemesterSubject[];
   };
 }
 
@@ -81,7 +81,7 @@ const MobileStudentDashboard: React.FC<MobileStudentDashboardProps> = ({
       // Generate attendance summary for all semesters
       const allSemesterAttendance = StudentAttendanceService.generateMockAttendanceData(
         currentUser.id,
-        courseInfo.subjects
+        courseInfo.subjects || []
       );
       
       const summary = StudentAttendanceService.getAttendanceBySemesterSummary(allSemesterAttendance);
@@ -365,7 +365,7 @@ const MobileStudentDashboard: React.FC<MobileStudentDashboardProps> = ({
       {courseInfo?.subjects && courseInfo.subjects.length > 0 ? (
         <div className="space-y-4">
           {[1, 2, 3, 4, 5, 6, 7, 8].map(semester => {
-            const semesterSubjects = courseInfo.subjects.filter(subject => subject.semester === semester);
+            const semesterSubjects = courseInfo.subjects?.filter(subject => subject.semester === semester) || [];
             if (semesterSubjects.length === 0) return null;
             
             return (

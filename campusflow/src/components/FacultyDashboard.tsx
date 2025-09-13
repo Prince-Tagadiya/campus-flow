@@ -219,7 +219,7 @@ const FacultyDashboard: React.FC = () => {
   };
 
   const filteredCourses = selectedBranch 
-    ? courses.filter(course => course.branch === selectedBranch)
+    ? courses.filter(course => course.branchId === selectedBranch)
     : courses;
 
   if (loading) {
@@ -424,7 +424,7 @@ const FacultyDashboard: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium text-gray-900">{course.name}</p>
-                      <p className="text-sm text-gray-500">{course.code} - {course.branch}</p>
+                      <p className="text-sm text-gray-500">{course.code} - {course.branchName}</p>
                     </div>
                     <span className="text-xs text-gray-500">
                       {course.totalStudents} students

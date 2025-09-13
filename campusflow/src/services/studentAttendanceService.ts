@@ -17,10 +17,19 @@ export class StudentAttendanceService {
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         attendanceRecords.push({
-          id: doc.id,
-          ...data,
-          lastAttendance: data.lastAttendance?.toDate()
-        } as StudentAttendance);
+          studentId: data.studentId || '',
+          studentName: data.studentName || '',
+          totalSessions: data.totalSessions || 0,
+          presentSessions: data.presentSessions || 0,
+          absentSessions: data.absentSessions || 0,
+          attendancePercentage: data.attendancePercentage || 0,
+          lastAttendance: data.lastAttendance?.toDate(),
+          courseId: data.courseId || '',
+          courseName: data.courseName || '',
+          subjectId: data.subjectId,
+          subjectName: data.subjectName,
+          semester: data.semester
+        });
       });
       
       return attendanceRecords;
@@ -47,7 +56,6 @@ export class StudentAttendanceService {
         querySnapshot.forEach((doc) => {
           const data = doc.data();
           attendanceRecords.push({
-            id: doc.id,
             studentId: data.studentId,
             studentName: data.studentName,
             totalSessions: data.totalSessions || 0,

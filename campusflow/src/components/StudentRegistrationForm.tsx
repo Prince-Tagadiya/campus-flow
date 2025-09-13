@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { XMarkIcon, UserIcon, AcademicCapIcon, HomeIcon, PhoneIcon, DocumentTextIcon, HeartIcon, StarIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { courses, branches, getSubjectsByCourse } from '../data/courses';
+import { SemesterSubject } from '../types';
 
 interface StudentRegistrationFormProps {
   onClose: () => void;
@@ -27,7 +28,7 @@ const StudentRegistrationForm: React.FC<StudentRegistrationFormProps> = ({ onClo
     courseName: '',
     branchId: '',
     branchName: '',
-    selectedSubjects: [],
+    selectedSubjects: [] as SemesterSubject[],
     
     // Address Information
     address: {
