@@ -5,11 +5,10 @@ import LazyWrapper from './components/LazyWrapper';
 
 // Lazy load components for better performance
 const LandingPage = lazy(() => import('./components/LandingPage'));
-const StudentDashboard = lazy(() => import('./components/StudentDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
-const LoginDebug = lazy(() => import('./components/LoginDebug'));
-const FirebaseTest = lazy(() => import('./components/FirebaseTest'));
-const OCRTest = lazy(() => import('./components/OCRTest'));
+const FacultyDashboard = lazy(() => import('./components/FacultyDashboard'));
+const StudentAttendanceDashboard = lazy(() => import('./components/StudentAttendanceDashboard'));
+const ParentDashboard = lazy(() => import('./components/ParentDashboard'));
 
 const AppContent: React.FC = () => {
   const { currentUser, loading } = useAuth();
@@ -76,7 +75,12 @@ const AppContent: React.FC = () => {
   }
 
   // Route based on user role
+  console.log('🔍 Current user for routing:', currentUser);
+  console.log('🔍 User role:', currentUser.role);
+  console.log('🔍 User email:', currentUser.email);
+  
   if (currentUser.role === 'admin') {
+    console.log('✅ Routing to Admin Dashboard');
     return (
       <LazyWrapper fallback="campus" className="min-h-screen">
         <AdminDashboard />
@@ -84,9 +88,26 @@ const AppContent: React.FC = () => {
     );
   }
 
+  if (currentUser.role === 'faculty') {
+    return (
+      <LazyWrapper fallback="campus" className="min-h-screen">
+        <FacultyDashboard />
+      </LazyWrapper>
+    );
+  }
+
+  if (currentUser.role === 'parent') {
+    return (
+      <LazyWrapper fallback="campus" className="min-h-screen">
+        <ParentDashboard />
+      </LazyWrapper>
+    );
+  }
+
+  // Default student role
   return (
     <LazyWrapper fallback="campus" className="min-h-screen">
-      <StudentDashboard />
+      <StudentAttendanceDashboard />
     </LazyWrapper>
   );
 };

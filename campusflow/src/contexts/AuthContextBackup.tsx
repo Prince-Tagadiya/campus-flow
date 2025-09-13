@@ -31,7 +31,9 @@ export const useAuth = () => {
   return context;
 };
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,41 +47,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const user = result.user;
       console.log('Login successful:', user.email);
 
-      // Check if user exists in Firestore
-      try {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data() as User;
-          setCurrentUser(userData);
-          console.log('User data loaded:', userData);
-        } else {
-          // Create new user document
-          const newUser: User = {
-            id: user.uid,
-            name: user.displayName || 'User',
-            email: user.email || '',
-            role: 'student',
-            createdAt: new Date(),
-            photoURL: user.photoURL || undefined,
-          };
-
-          await setDoc(doc(db, 'users', user.uid), newUser);
-          setCurrentUser(newUser);
-          console.log('New user created:', newUser);
-        }
-      } catch (firestoreError) {
-        console.log('Firestore error, using fallback user data');
-          const isAdmin = user.email === 'admin@college.edu';
-          const fallbackUser: User = {
-            id: user.uid,
-            name: isAdmin ? 'System Administrator' : (user.displayName || 'User'),
-            email: user.email || '',
-            role: isAdmin ? 'admin' : 'student',
-            createdAt: new Date(),
-            photoURL: user.photoURL || undefined,
-            ...(isAdmin && { phone: '+1234567890', college: 'TrackMate University' })
-          };
-        setCurrentUser(fallbackUser);
+      // Get user data from Firestore
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as User;
+        setCurrentUser(userData);
+        console.log('User data loaded:', userData);
+      } else {
+        throw new Error('User account not found. Please contact administrator.');
       }
     } catch (error: any) {
       console.error('Error logging in:', error);
@@ -87,13 +62,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let errorMessage = 'Login failed. Please check your credentials.';
       
       if (error.code === 'auth/user-not-found') {
-        errorMessage = 'No account found with this email.';
+        errorMessage = 'No account found with this email. Please contact administrator.';
       } else if (error.code === 'auth/wrong-password') {
-        errorMessage = 'Incorrect password.';
+        errorMessage = 'Incorrect password. Please try again.';
       } else if (error.code === 'auth/invalid-email') {
         errorMessage = 'Invalid email address.';
-      } else if (error.code === 'auth/operation-not-allowed') {
-        errorMessage = 'Email/password authentication is not enabled.';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'Too many failed attempts. Please try again later.';
       }
       
       throw new Error(errorMessage);
@@ -121,12 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         photoURL: user.photoURL || undefined,
       };
 
-      try {
-        await setDoc(doc(db, 'users', user.uid), newUser);
-      } catch (firestoreError) {
-        console.log('Could not save to Firestore, using local data');
-      }
-      
+      await setDoc(doc(db, 'users', user.uid), newUser);
       setCurrentUser(newUser);
       console.log('New user created:', newUser);
     } catch (error: any) {
@@ -158,40 +128,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('Google sign-in successful:', user.email);
 
       // Check if user exists in Firestore
-      try {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data() as User;
-          setCurrentUser(userData);
-          console.log('User data loaded:', userData);
-        } else {
-          // Create new user document
-          const newUser: User = {
-            id: user.uid,
-            name: user.displayName || '',
-            email: user.email || '',
-            role: 'student', // Default role
-            createdAt: new Date(),
-            photoURL: user.photoURL || undefined,
-          };
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as User;
+        setCurrentUser(userData);
+        console.log('User data loaded:', userData);
+      } else {
+        // Create new user document
+        const newUser: User = {
+          id: user.uid,
+          name: user.displayName || '',
+          email: user.email || '',
+          role: 'student', // Default role
+          createdAt: new Date(),
+          photoURL: user.photoURL || undefined,
+        };
 
-          await setDoc(doc(db, 'users', user.uid), newUser);
-          setCurrentUser(newUser);
-          console.log('New user created:', newUser);
-        }
-      } catch (firestoreError) {
-        console.log('Firestore error, using fallback user data');
-          const isAdmin = user.email === 'admin@college.edu';
-          const fallbackUser: User = {
-            id: user.uid,
-            name: isAdmin ? 'System Administrator' : (user.displayName || 'User'),
-            email: user.email || '',
-            role: isAdmin ? 'admin' : 'student',
-            createdAt: new Date(),
-            photoURL: user.photoURL || undefined,
-            ...(isAdmin && { phone: '+1234567890', college: 'TrackMate University' })
-          };
-        setCurrentUser(fallbackUser);
+        await setDoc(doc(db, 'users', user.uid), newUser);
+        setCurrentUser(newUser);
+        console.log('New user created:', newUser);
       }
     } catch (error: any) {
       console.error('Error signing in with Google:', error);
@@ -227,76 +182,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setFirebaseUser(user);
 
       if (user) {
-        setLoading(true);
         try {
-          // Get user data from Firestore with timeout
-          const userDoc = await Promise.race([
-            getDoc(doc(db, 'users', user.uid)),
-            new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Timeout')), 3000)
-            )
-          ]) as any;
-          
-          if (userDoc && userDoc.exists()) {
+          // Get user data from Firestore
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
             const userData = userDoc.data() as User;
-            // Force admin role if email is admin@college.edu
-            if (user.email === 'admin@college.edu') {
-              userData.role = 'admin';
-              userData.name = 'System Administrator';
-              userData.phone = '+1234567890';
-              userData.college = 'TrackMate University';
-            }
             setCurrentUser(userData);
             console.log('User data loaded from Firestore:', userData);
           } else {
             // If user doesn't exist in Firestore, create them
-            // Check if this is the admin email
-            const isAdmin = user.email === 'admin@college.edu';
             const newUser: User = {
               id: user.uid,
-              name: isAdmin ? 'System Administrator' : (user.displayName || 'User'),
+              name: user.displayName || '',
               email: user.email || '',
-              role: isAdmin ? 'admin' : 'student',
+              role: 'student',
               createdAt: new Date(),
               photoURL: user.photoURL || undefined,
-              ...(isAdmin && { phone: '+1234567890', college: 'TrackMate University' })
             };
-
-            try {
-              await setDoc(doc(db, 'users', user.uid), newUser);
-            } catch (error) {
-              console.log('Could not save user to Firestore, using local data');
-            }
+            await setDoc(doc(db, 'users', user.uid), newUser);
             setCurrentUser(newUser);
-            console.log('New user created:', newUser);
+            console.log('New user created in Firestore:', newUser);
           }
         } catch (error) {
           console.error('Error loading user data:', error);
-          // Set a default user if Firestore fails
-          const isAdmin = user.email === 'admin@college.edu';
-          const defaultUser: User = {
+          // Fallback: create user without Firestore
+          const fallbackUser: User = {
             id: user.uid,
-            name: isAdmin ? 'System Administrator' : (user.displayName || 'User'),
+            name: user.displayName || '',
             email: user.email || '',
-            role: isAdmin ? 'admin' : 'student',
+            role: 'student',
             createdAt: new Date(),
             photoURL: user.photoURL || undefined,
-            ...(isAdmin && { phone: '+1234567890', college: 'TrackMate University' })
           };
-          setCurrentUser(defaultUser);
-        } finally {
-          setLoading(false);
+          setCurrentUser(fallbackUser);
         }
       } else {
         setCurrentUser(null);
+      }
+
+      setLoading(false);
+    });
+
+    // Set a timeout to prevent infinite loading
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.log('Auth timeout - setting loading to false');
         setLoading(false);
       }
-    });
+    }, 10000); // 10 second timeout
 
     return () => {
       unsubscribe();
+      clearTimeout(timeout);
     };
-  }, []);
+  }, [loading]);
 
   const value: AuthContextType = {
     currentUser,

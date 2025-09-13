@@ -92,11 +92,70 @@ import {
   AISuggestion,
 } from '../types';
 import { motion } from 'framer-motion';
+import MobileStudentDashboard from './MobileStudentDashboard';
 
 // (RGL styles removed)
 
 const StudentDashboard: React.FC = () => {
   const { currentUser, logout } = useAuth();
+  
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false);
+  const [attendance, setAttendance] = useState<StudentAttendance[]>([]);
+  const [courseInfo, setCourseInfo] = useState<{
+    courseId: string;
+    courseName: string;
+    courseCode: string;
+    branchId: string;
+    branchName: string;
+    subjects: SemesterSubject[];
+  } | undefined>();
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Load course info and attendance data
+  useEffect(() => {
+    if (currentUser?.courseInfo) {
+      setCourseInfo(currentUser.courseInfo);
+    }
+    
+    // Mock attendance data for now
+    setAttendance([
+      {
+        studentId: currentUser?.id || '1',
+        studentName: currentUser?.name || 'Student',
+        totalSessions: 20,
+        presentSessions: 18,
+        absentSessions: 2,
+        attendancePercentage: 90,
+        lastAttendance: new Date(),
+        courseId: 'btech-cse',
+        courseName: 'Bachelor of Technology - Computer Science and Engineering'
+      }
+    ]);
+  }, [currentUser]);
+
+  // Return mobile dashboard for small screens
+  if (isMobile) {
+    return (
+      <MobileStudentDashboard
+        assignments={assignments}
+        exams={exams}
+        subjects={subjects}
+        attendance={attendance}
+        courseInfo={courseInfo}
+      />
+    );
+  }
   
   // (RGL style injection removed)
   const [assignments, setAssignments] = useState<Assignment[]>([
@@ -302,8 +361,6 @@ const StudentDashboard: React.FC = () => {
   const examAIFileInputRef = useRef<HTMLInputElement | null>(null);
   const aiAssignmentFileInputRef = useRef<HTMLInputElement | null>(null);
   const ocrTestFileInputRef = useRef<HTMLInputElement | null>(null);
-
-  
 
   const handleStartUpgrade = (plan: { id: 'free' | 'plus' | 'pro'; name: string; limit: number; price: string }) => {
     setUpgradePlan(plan);
@@ -538,6 +595,40 @@ const StudentDashboard: React.FC = () => {
       localStorage.setItem(cardsKey, JSON.stringify(cards));
     } catch {}
   }, [cards, cardsKey]);
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Load course info and attendance data
+  useEffect(() => {
+    if (currentUser?.courseInfo) {
+      setCourseInfo(currentUser.courseInfo);
+    }
+    
+    // Mock attendance data for now
+    setAttendance([
+      {
+        studentId: currentUser?.id || '1',
+        studentName: currentUser?.name || 'Student',
+        totalSessions: 20,
+        presentSessions: 18,
+        absentSessions: 2,
+        attendancePercentage: 90,
+        lastAttendance: new Date(),
+        courseId: 'btech-cse',
+        courseName: 'Bachelor of Technology - Computer Science and Engineering'
+      }
+    ]);
+  }, [currentUser]);
 
   const toggleCard = (id: string) => {
     setCards((prev) =>

@@ -4,12 +4,13 @@ import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyAlt64M4TtqwtzGiLnOhKcCK8FUz2yAx3E',
-  authDomain: 'campus-flow-a01a1.firebaseapp.com',
-  projectId: 'campus-flow-a01a1',
-  storageBucket: 'campus-flow-a01a1.appspot.com',
-  messagingSenderId: '1072114090918',
-  appId: '1:1072114090918:web:a5d30fc6f9010941df4567',
+  apiKey: 'AIzaSyAeoH9hhNKEVUnL4yTKEbsVGSeI15Adjis',
+  authDomain: 'trackmate-d3d35.firebaseapp.com',
+  projectId: 'trackmate-d3d35',
+  storageBucket: 'trackmate-d3d35.firebasestorage.app',
+  messagingSenderId: '616295273838',
+  appId: '1:616295273838:web:bf5b77dff5ce17f94add7f',
+  measurementId: 'G-49NYMP5KKS'
 };
 
 // Initialize Firebase

@@ -4,7 +4,7 @@ import AnimatedLoader from './AnimatedLoader';
 import LoadingSpinner from './LoadingSpinner';
 
 const LoginDebug: React.FC = () => {
-  const { signInWithGoogle, currentUser, loading } = useAuth();
+  const { login, currentUser, loading } = useAuth();
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
   const [isSigningIn, setIsSigningIn] = useState(false);
 
@@ -12,13 +12,13 @@ const LoginDebug: React.FC = () => {
     setDebugInfo(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleEmailSignIn = async () => {
     try {
       setIsSigningIn(true);
       addDebugInfo('Login button clicked');
-      addDebugInfo('Starting Google sign-in process...');
+      addDebugInfo('Starting email sign-in process...');
       
-      await signInWithGoogle();
+      await login('test@example.com', 'password123');
       
       addDebugInfo('Login successful!');
     } catch (error: any) {
@@ -51,7 +51,7 @@ const LoginDebug: React.FC = () => {
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">Test Login</h2>
           <button
-            onClick={handleGoogleSignIn}
+            onClick={handleEmailSignIn}
             className="btn-primary mb-4 flex items-center justify-center space-x-2"
             disabled={loading || isSigningIn}
           >
@@ -66,11 +66,11 @@ const LoginDebug: React.FC = () => {
                 <span>Loading...</span>
               </>
             ) : (
-              'Test Google Login'
+              'Test Email Login'
             )}
           </button>
           <p className="text-sm text-gray-600">
-            Click the button above to test the Google login process. Check the debug log below for any errors.
+            Click the button above to test the email login process. Check the debug log below for any errors.
           </p>
         </div>
 

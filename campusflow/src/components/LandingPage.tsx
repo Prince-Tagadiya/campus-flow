@@ -1,354 +1,216 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  AcademicCapIcon,
-  ClockIcon,
-  CreditCardIcon,
-  ChartBarIcon,
-  CheckIcon,
-} from '@heroicons/react/24/outline';
+import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 
 const LandingPage: React.FC = () => {
-  const { signInWithGoogle } = useAuth();
+  const { login, signInWithGoogle } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleGoogleSignIn = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      setError('Please fill in all fields');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
     try {
-      console.log('Login button clicked');
-      await signInWithGoogle();
-    } catch (error) {
-      console.error('Login failed:', error);
+      await login(email, password);
+    } catch (error: any) {
+      setError(error.message || 'Login failed. Please check your credentials.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const features = [
-    {
-      icon: AcademicCapIcon,
-      title: 'Assignment Tracker',
-      description:
-        'Upload and track all your assignments with deadlines and progress monitoring.',
-    },
-    {
-      icon: ClockIcon,
-      title: 'Deadline Reminders',
-      description:
-        'Never miss a deadline with smart notifications and countdown timers.',
-    },
-    {
-      icon: CreditCardIcon,
-      title: 'Parent Recharge',
-      description:
-        'Seamless payment system for parents to recharge student accounts.',
-    },
-    {
-      icon: ChartBarIcon,
-      title: 'Smart Dashboard',
-      description:
-        'Personalized dashboard with analytics and performance insights.',
-    },
-  ];
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setError(null);
 
-  const pricingPlans = [
-    {
-      name: 'Student Plan',
-      price: '$9.99',
-      period: '/month',
-      features: [
-        'Assignment tracking',
-        'Deadline reminders',
-        'PDF uploads',
-        'Basic analytics',
-        'Email support',
-      ],
-      popular: false,
-    },
-    {
-      name: 'Premium Plan',
-      price: '$19.99',
-      period: '/month',
-      features: [
-        'Everything in Student Plan',
-        'Advanced analytics',
-        'Priority support',
-        'Custom dashboard',
-        'Parent portal access',
-        'Unlimited storage',
-      ],
-      popular: true,
-    },
-    {
-      name: 'Institution Plan',
-      price: 'Custom',
-      period: '/year',
-      features: [
-        'Everything in Premium Plan',
-        'Admin dashboard',
-        'User management',
-        'Bulk operations',
-        'API access',
-        'Dedicated support',
-      ],
-      popular: false,
-    },
-  ];
+    try {
+      await signInWithGoogle();
+    } catch (error: any) {
+      setError(error.message || 'Google sign-in failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-white">
-      {/* Navigation */}
-      <nav className="bg-white/80 backdrop-blur-sm border-b border-gray-100 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-10 h-10 bg-gradient-to-r from-primary to-orange-600 rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-lg">C</span>
-              </div>
-              <span className="text-2xl font-bold text-gray-900">
-                ampusFlow
-              </span>
-            </div>
-            <div className="flex items-center space-x-4">
-              <button onClick={handleGoogleSignIn} className="btn-primary">
-                Login with Google
-              </button>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-white flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        {/* Header */}
+        <div className="text-center">
+          <div className="w-20 h-20 bg-gradient-to-r from-primary to-orange-600 rounded-2xl flex items-center justify-center shadow-2xl mx-auto mb-6">
+            <span className="text-white font-bold text-3xl">C</span>
           </div>
-        </div>
-      </nav>
-
-      {/* Hero Section */}
-      <section className="relative overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-          <div className="text-center">
-            <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6">
-              Manage Your Campus Life
-              <span className="text-primary block">With Ease</span>
-            </h1>
-            <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-              CampusFlow is the ultimate student management platform that helps
-              you track assignments, manage deadlines, and stay organized
-              throughout your academic journey.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button
-                onClick={handleGoogleSignIn}
-                className="btn-primary text-lg px-8 py-4"
-              >
-                Get Started Free
-              </button>
-              <button className="btn-secondary text-lg px-8 py-4">
-                Watch Demo
-              </button>
-            </div>
-          </div>
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">CampusFlow</h1>
+          <p className="text-gray-600 text-lg">
+            Automated Student Attendance Monitoring and Analytics System
+          </p>
         </div>
 
-        {/* Decorative elements */}
-        <div className="absolute top-20 left-10 w-20 h-20 bg-orange-200 rounded-full opacity-20"></div>
-        <div className="absolute top-40 right-20 w-16 h-16 bg-orange-300 rounded-full opacity-30"></div>
-        <div className="absolute bottom-20 left-20 w-12 h-12 bg-orange-400 rounded-full opacity-40"></div>
-      </section>
+        {/* Login Form */}
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          <h2 className="text-2xl font-bold text-gray-900 text-center mb-6">
+            Sign In
+          </h2>
+          
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                Email Address
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-colors"
+                placeholder="Enter your email"
+                required
+              />
+            </div>
 
-      {/* Features Section */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">
-              Everything You Need to Succeed
-            </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Powerful features designed specifically for students to manage
-              their academic life effectively.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {features.map((feature, index) => (
-              <div
-                key={index}
-                className="card text-center hover:shadow-xl transition-shadow duration-300"
-              >
-                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <feature.icon className="w-8 h-8 text-primary" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  {feature.title}
-                </h3>
-                <p className="text-gray-600">{feature.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing Section */}
-      <section className="py-20 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">
-              Choose Your Plan
-            </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Flexible pricing plans designed to meet the needs of students and
-              institutions.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {pricingPlans.map((plan, index) => (
-              <div
-                key={index}
-                className={`card relative ${
-                  plan.popular ? 'ring-2 ring-primary scale-105' : ''
-                }`}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                    <span className="bg-primary text-white px-4 py-2 rounded-full text-sm font-semibold">
-                      Most Popular
-                    </span>
-                  </div>
-                )}
-
-                <div className="text-center mb-8">
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                    {plan.name}
-                  </h3>
-                  <div className="flex items-baseline justify-center">
-                    <span className="text-4xl font-bold text-primary">
-                      {plan.price}
-                    </span>
-                    <span className="text-gray-600 ml-1">{plan.period}</span>
-                  </div>
-                </div>
-
-                <ul className="space-y-4 mb-8">
-                  {plan.features.map((feature, featureIndex) => (
-                    <li key={featureIndex} className="flex items-center">
-                      <CheckIcon className="w-5 h-5 text-green-500 mr-3 flex-shrink-0" />
-                      <span className="text-gray-700">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-colors"
+                  placeholder="Enter your password"
+                  required
+                />
                 <button
-                  onClick={handleGoogleSignIn}
-                  className={`w-full py-3 px-6 rounded-lg font-semibold transition-colors duration-200 ${
-                    plan.popular
-                      ? 'bg-primary hover:bg-orange-600 text-white'
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
-                  }`}
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
-                  Get Started
+                  {showPassword ? (
+                    <EyeSlashIcon className="w-5 h-5" />
+                  ) : (
+                    <EyeIcon className="w-5 h-5" />
+                  )}
                 </button>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
+            </div>
 
-      {/* CTA Section */}
-      <section className="py-20 bg-primary">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl font-bold text-white mb-4">
-            Ready to Transform Your Academic Life?
-          </h2>
-          <p className="text-xl text-orange-100 mb-8">
-            Join thousands of students who are already using CampusFlow to stay
-            organized and succeed.
-          </p>
-          <button
-            onClick={handleGoogleSignIn}
-            className="bg-white text-primary hover:bg-gray-100 font-semibold py-4 px-8 rounded-lg text-lg transition-colors duration-200"
-          >
-            Start Your Free Trial
-          </button>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div>
-              <div className="flex items-center space-x-2 mb-4">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold">C</span>
-                </div>
-                <span className="text-xl font-bold">ampusFlow</span>
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-red-800 text-sm">{error}</p>
               </div>
-              <p className="text-gray-400">
-                The ultimate student management platform for modern education.
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className={`w-full py-3 px-4 rounded-lg font-medium text-white transition-colors ${
+                loading
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-primary to-orange-600 hover:from-orange-600 hover:to-primary'
+              }`}
+            >
+              {loading ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  Signing In...
+                </div>
+              ) : (
+                'Sign In'
+              )}
+            </button>
+          </form>
+
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white text-gray-500">Or</span>
+              </div>
+            </div>
+
+            <button
+              onClick={handleGoogleSignIn}
+              disabled={loading}
+              className={`mt-4 w-full py-3 px-4 rounded-lg font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors ${
+                loading ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+            >
+              {loading ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-600 mr-2"></div>
+                  Signing In...
+                </div>
+              ) : (
+                <div className="flex items-center justify-center">
+                  <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                  Sign in with Google
+                </div>
+              )}
+            </button>
+          </div>
+
+          <div className="mt-6 text-center">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="text-sm font-medium text-blue-800 mb-2">Quick Access</h3>
+              <p className="text-sm text-blue-700">
+                Use Google Sign-in for immediate access, or contact your administrator for email/password accounts.
               </p>
             </div>
-
-            <div>
-              <h3 className="text-lg font-semibold mb-4">Product</h3>
-              <ul className="space-y-2 text-gray-400">
-                <li>
-                  <button className="hover:text-white transition-colors text-left">
-                    Features
-                  </button>
-                </li>
-                <li>
-                  <button className="hover:text-white transition-colors text-left">
-                    Pricing
-                  </button>
-                </li>
-                <li>
-                  <button className="hover:text-white transition-colors text-left">
-                    API
-                  </button>
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-semibold mb-4">Company</h3>
-              <ul className="space-y-2 text-gray-400">
-                <li>
-                  <button className="hover:text-white transition-colors text-left">
-                    About
-                  </button>
-                </li>
-                <li>
-                  <button className="hover:text-white transition-colors text-left">
-                    Contact
-                  </button>
-                </li>
-                <li>
-                  <button className="hover:text-white transition-colors text-left">
-                    Careers
-                  </button>
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-semibold mb-4">Legal</h3>
-              <ul className="space-y-2 text-gray-400">
-                <li>
-                  <button className="hover:text-white transition-colors text-left">
-                    Privacy Policy
-                  </button>
-                </li>
-                <li>
-                  <button className="hover:text-white transition-colors text-left">
-                    Terms of Service
-                  </button>
-                </li>
-                <li>
-                  <button className="hover:text-white transition-colors text-left">
-                    Cookie Policy
-                  </button>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2024 CampusFlow. All rights reserved.</p>
           </div>
         </div>
-      </footer>
+
+        {/* Features */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
+          <div className="text-center">
+            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+              <span className="text-blue-600 font-bold text-lg">📱</span>
+            </div>
+            <h3 className="font-semibold text-gray-900 mb-2">QR Code Attendance</h3>
+            <p className="text-sm text-gray-600">
+              Students scan QR codes for quick and secure attendance marking
+            </p>
+          </div>
+          
+          <div className="text-center">
+            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+              <span className="text-green-600 font-bold text-lg">📊</span>
+            </div>
+            <h3 className="font-semibold text-gray-900 mb-2">Real-time Analytics</h3>
+            <p className="text-sm text-gray-600">
+              Track attendance patterns and generate detailed reports
+            </p>
+          </div>
+          
+          <div className="text-center">
+            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+              <span className="text-purple-600 font-bold text-lg">👨‍👩‍👧‍👦</span>
+            </div>
+            <h3 className="font-semibold text-gray-900 mb-2">Parent Portal</h3>
+            <p className="text-sm text-gray-600">
+              Parents can monitor their child's attendance and academic progress
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

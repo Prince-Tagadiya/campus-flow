@@ -3,106 +3,56 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   UsersIcon,
   ChartBarIcon,
-  CreditCardIcon,
   BellIcon,
   MagnifyingGlassIcon,
   EyeIcon,
   UserGroupIcon,
-  DocumentTextIcon,
-  CalendarIcon,
+  AcademicCapIcon,
+  UserPlusIcon,
 } from '@heroicons/react/24/outline';
-import { User, Assignment, Payment } from '../types';
+import { User } from '../types';
+import { collection, onSnapshot, orderBy, query, Timestamp, updateDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase/config';
+import { adminCreateUser, adminUpdateUserRole } from '../services/adminService';
+import StudentRegistrationForm from './StudentRegistrationForm';
+import FacultyRegistrationForm from './FacultyRegistrationForm';
 
 const AdminDashboard: React.FC = () => {
   const { currentUser, logout } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTab, setSelectedTab] = useState('overview');
+  const [selectedTab, setSelectedTab] = useState('users');
+  const [creating, setCreating] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newRole, setNewRole] = useState<'student' | 'faculty' | 'admin' | 'parent'>('student');
+  const [newStudentId, setNewStudentId] = useState('');
+  const [newParentId, setNewParentId] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [showStudentForm, setShowStudentForm] = useState(false);
+  const [showFacultyForm, setShowFacultyForm] = useState(false);
 
-  // Mock data for demonstration
   useEffect(() => {
-    const mockUsers: User[] = [
-      {
-        id: '1',
-        name: 'John Doe',
-        email: 'john@example.com',
-        role: 'student',
-        createdAt: new Date('2024-01-15'),
-        photoURL: 'https://via.placeholder.com/40',
-      },
-      {
-        id: '2',
-        name: 'Jane Smith',
-        email: 'jane@example.com',
-        role: 'student',
-        createdAt: new Date('2024-01-20'),
-        photoURL: 'https://via.placeholder.com/40',
-      },
-      {
-        id: '3',
-        name: 'Mike Johnson',
-        email: 'mike@example.com',
-        role: 'student',
-        createdAt: new Date('2024-02-01'),
-        photoURL: 'https://via.placeholder.com/40',
-      },
-    ];
-
-    const mockAssignments: Assignment[] = [
-      {
-        id: '1',
-        studentId: '1',
-        title: 'Physics Lab Report',
-        subjectId: '1',
-        subjectName: 'Physics',
-        pdfUrl: '',
-        deadline: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-        status: 'pending',
-        createdAt: new Date(),
-        priority: 'high',
-        fileSize: 2.5,
-        submissionType: 'assignment',
-      },
-      {
-        id: '2',
-        studentId: '2',
-        title: 'Mathematics Assignment',
-        subjectId: '2',
-        subjectName: 'Mathematics',
-        pdfUrl: '',
-        deadline: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
-        status: 'completed',
-        createdAt: new Date(),
-        priority: 'medium',
-        fileSize: 1.8,
-        submissionType: 'assignment',
-      },
-    ];
-
-    const mockPayments: Payment[] = [
-      {
-        id: '1',
-        studentId: '1',
-        amount: 99.99,
-        date: new Date('2024-01-15'),
-        method: 'Credit Card',
-        status: 'completed',
-      },
-      {
-        id: '2',
-        studentId: '2',
-        amount: 99.99,
-        date: new Date('2024-01-20'),
-        method: 'PayPal',
-        status: 'completed',
-      },
-    ];
-
-    setUsers(mockUsers);
-    setAssignments(mockAssignments);
-    setPayments(mockPayments);
+    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      const list: User[] = snap.docs.map((d) => {
+        const data = d.data() as any;
+        const createdAt: Date = data.createdAt?.toDate ? (data.createdAt as Timestamp).toDate() : new Date(data.createdAt || Date.now());
+        return {
+          id: d.id,
+          name: data.name || '',
+          email: data.email || '',
+          role: data.role || 'student',
+          createdAt,
+          photoURL: data.photoURL,
+          studentId: data.studentId,
+          parentId: data.parentId,
+        } as User;
+      });
+      setUsers(list);
+    });
+    return () => unsub();
   }, []);
 
   const handleLogout = async () => {
@@ -121,23 +71,100 @@ const AdminDashboard: React.FC = () => {
 
   const stats = {
     totalUsers: users.length,
-    totalAssignments: assignments.length,
-    completedAssignments: assignments.filter((a) => a.status === 'completed')
-      .length,
-    totalRevenue: payments.reduce((sum, payment) => sum + payment.amount, 0),
-    activeUsers: users.filter(
-      (user) =>
-        new Date().getTime() - user.createdAt.getTime() <
-        30 * 24 * 60 * 60 * 1000
-    ).length,
+    faculty: users.filter(u => u.role === 'faculty').length,
+    students: users.filter(u => u.role === 'student').length,
+    parents: users.filter(u => u.role === 'parent').length,
+    admins: users.filter(u => u.role === 'admin').length,
   };
 
   const tabs = [
-    { id: 'overview', name: 'Overview', icon: ChartBarIcon },
     { id: 'users', name: 'User Management', icon: UsersIcon },
-    { id: 'payments', name: 'Payments', icon: CreditCardIcon },
-    { id: 'announcements', name: 'Announcements', icon: BellIcon },
+    { id: 'overview', name: 'Overview', icon: ChartBarIcon },
+    { id: 'attendance', name: 'Attendance System', icon: AcademicCapIcon },
   ];
+
+  const createAccount = async () => {
+    setError(null);
+    setCreating(true);
+    try {
+      await adminCreateUser(
+        newEmail.trim(), 
+        newPassword, 
+        newName.trim() || newEmail.split('@')[0], 
+        newRole,
+        newRole === 'parent' ? newStudentId : undefined,
+        newRole === 'student' ? newParentId : undefined
+      );
+      setNewEmail('');
+      setNewPassword('');
+      setNewName('');
+      setNewRole('student');
+      setNewStudentId('');
+      setNewParentId('');
+    } catch (e: any) {
+      setError(e?.message || 'Failed to create account');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleStudentFormSubmit = async (studentData: any) => {
+    setCreating(true);
+    setError(null);
+
+    try {
+      // Create user with comprehensive student data
+      await adminCreateUser(
+        studentData.email, 
+        'student123', // Default password
+        studentData.name, 
+        'student',
+        undefined, // studentId
+        undefined, // parentId
+        studentData // Pass all comprehensive student data
+      );
+      
+      setShowStudentForm(false);
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to create student account');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleFacultyFormSubmit = async (facultyData: any) => {
+    setCreating(true);
+    setError(null);
+
+    try {
+      // Create user with comprehensive faculty data
+      await adminCreateUser(
+        facultyData.email, 
+        'faculty123', // Default password
+        facultyData.name, 
+        'faculty',
+        undefined, // studentId
+        undefined, // parentId
+        facultyData // Pass all comprehensive faculty data
+      );
+      
+      setShowFacultyForm(false);
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to create faculty account');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const changeRole = async (userId: string, role: 'student' | 'faculty' | 'admin' | 'parent') => {
+    try {
+      await adminUpdateUserRole(userId, role);
+    } catch (e) {
+      console.error('Failed to update role', e);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -147,19 +174,17 @@ const AdminDashboard: React.FC = () => {
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-gradient-to-r from-primary to-orange-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">C</span>
+                <span className="text-white font-bold text-sm">A</span>
               </div>
               <span className="text-xl font-bold text-gray-900">
-                ampusFlow Admin
+                Admin Dashboard
               </span>
             </div>
 
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
                 <img
-                  src={
-                    currentUser?.photoURL || 'https://via.placeholder.com/32'
-                  }
+                  src={currentUser?.photoURL || 'https://via.placeholder.com/32'}
                   alt="Profile"
                   className="w-8 h-8 rounded-full"
                 />
@@ -185,7 +210,7 @@ const AdminDashboard: React.FC = () => {
             Welcome, Admin! 👨‍💼
           </h1>
           <p className="text-gray-600">
-            Manage your CampusFlow platform and monitor student activities.
+            Manage users, roles, and the attendance system for your college.
           </p>
         </div>
 
@@ -209,157 +234,13 @@ const AdminDashboard: React.FC = () => {
           </nav>
         </div>
 
-        {/* Overview Tab */}
-        {selectedTab === 'overview' && (
-          <div>
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-              <div className="card">
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <UsersIcon className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Total Users</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {stats.totalUsers}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                    <UserGroupIcon className="w-6 h-6 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Active Users</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {stats.activeUsers}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                    <DocumentTextIcon className="w-6 h-6 text-orange-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Total Assignments</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {stats.totalAssignments}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <CalendarIcon className="w-6 h-6 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Completed</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {stats.completedAssignments}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                    <CreditCardIcon className="w-6 h-6 text-yellow-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Total Revenue</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      ${stats.totalRevenue.toFixed(2)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Recent Activity */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div className="card">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Recent Users
-                </h3>
-                <div className="space-y-3">
-                  {users.slice(0, 5).map((user) => (
-                    <div key={user.id} className="flex items-center space-x-3">
-                      <img
-                        src={user.photoURL || 'https://via.placeholder.com/32'}
-                        alt={user.name}
-                        className="w-8 h-8 rounded-full"
-                      />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">
-                          {user.name}
-                        </p>
-                        <p className="text-xs text-gray-500">{user.email}</p>
-                      </div>
-                      <span className="text-xs text-gray-500">
-                        {user.createdAt.toLocaleDateString()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="card">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Recent Payments
-                </h3>
-                <div className="space-y-3">
-                  {payments.slice(0, 5).map((payment) => (
-                    <div
-                      key={payment.id}
-                      className="flex items-center justify-between"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">
-                          ${payment.amount.toFixed(2)}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {payment.method}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                            payment.status === 'completed'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}
-                        >
-                          {payment.status}
-                        </span>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {payment.date.toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* User Management Tab */}
+        {/* Users Tab */}
         {selectedTab === 'users' && (
-          <div>
-            <div className="card">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 card">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-semibold text-gray-900">
-                  User Management
+                  Users
                 </h3>
                 <div className="relative">
                   <MagnifyingGlassIcon className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
@@ -403,31 +284,36 @@ const AdminDashboard: React.FC = () => {
                         <td className="py-4 px-4">
                           <div className="flex items-center space-x-3">
                             <img
-                              src={
-                                user.photoURL ||
-                                'https://via.placeholder.com/32'
-                              }
+                              src={user.photoURL || 'https://via.placeholder.com/32'}
                               alt={user.name}
                               className="w-8 h-8 rounded-full"
                             />
+                            <div>
                             <span className="font-medium text-gray-900">
                               {user.name}
                             </span>
+                              {(user.studentId || user.parentId) && (
+                                <p className="text-xs text-gray-500">
+                                  {user.studentId ? `Student ID: ${user.studentId}` : `Parent ID: ${user.parentId}`}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="py-4 px-4 text-gray-700">
                           {user.email}
                         </td>
                         <td className="py-4 px-4">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                              user.role === 'admin'
-                                ? 'bg-purple-100 text-purple-800'
-                                : 'bg-blue-100 text-blue-800'
-                            }`}
+                          <select
+                            value={user.role}
+                            onChange={(e) => changeRole(user.id, e.target.value as any)}
+                            className="border border-gray-300 rounded-lg px-2 py-1 text-sm"
                           >
-                            {user.role}
-                          </span>
+                            <option value="student">student</option>
+                            <option value="faculty">faculty</option>
+                            <option value="parent">parent</option>
+                            <option value="admin">admin</option>
+                          </select>
                         </td>
                         <td className="py-4 px-4 text-gray-700">
                           {user.createdAt.toLocaleDateString()}
@@ -436,10 +322,7 @@ const AdminDashboard: React.FC = () => {
                           <div className="flex space-x-2">
                             <button className="text-primary hover:text-orange-600 text-sm font-medium flex items-center space-x-1">
                               <EyeIcon className="w-4 h-4" />
-                              <span>View as Student</span>
-                            </button>
-                            <button className="text-gray-600 hover:text-gray-800 text-sm font-medium">
-                              Edit
+                              <span>View</span>
                             </button>
                           </div>
                         </td>
@@ -449,135 +332,168 @@ const AdminDashboard: React.FC = () => {
                 </table>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Payments Tab */}
-        {selectedTab === 'payments' && (
-          <div>
             <div className="card">
-              <h3 className="text-lg font-semibold text-gray-900 mb-6">
-                Payment History
-              </h3>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 px-4 font-semibold text-gray-900">
-                        Student
-                      </th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-900">
-                        Amount
-                      </th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-900">
-                        Method
-                      </th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-900">
-                        Date
-                      </th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-900">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {payments.map((payment) => {
-                      const student = users.find(
-                        (u) => u.id === payment.studentId
-                      );
-                      return (
-                        <tr
-                          key={payment.id}
-                          className="border-b border-gray-100 hover:bg-gray-50"
-                        >
-                          <td className="py-4 px-4">
-                            <div className="flex items-center space-x-3">
-                              <img
-                                src={
-                                  student?.photoURL ||
-                                  'https://via.placeholder.com/32'
-                                }
-                                alt={student?.name}
-                                className="w-8 h-8 rounded-full"
-                              />
-                              <span className="font-medium text-gray-900">
-                                {student?.name}
-                              </span>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New Account</h3>
+              {error && <div className="mb-3 text-sm text-red-600">{error}</div>}
+              
+              <div className="space-y-4">
+                <div className="text-center py-4">
+                  <h4 className="text-md font-medium text-gray-700 mb-2">Choose Registration Type</h4>
+                  <p className="text-sm text-gray-500 mb-6">Select the type of account you want to create</p>
+                </div>
+                
+                <div className="space-y-3">
+                  <button 
+                    onClick={() => setShowStudentForm(true)}
+                    className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white py-4 px-6 rounded-xl hover:from-orange-600 hover:to-red-600 transition-all duration-300 hover:scale-105 font-semibold text-lg shadow-lg hover:shadow-xl"
+                  >
+                    <div className="flex items-center justify-center space-x-3">
+                      <span className="text-2xl">📋</span>
+                      <div className="text-left">
+                        <div>Create Student Profile</div>
+                        <div className="text-sm font-normal opacity-90">Comprehensive student registration with all details</div>
+                      </div>
                             </div>
-                          </td>
-                          <td className="py-4 px-4 text-gray-700 font-semibold">
-                            ${payment.amount.toFixed(2)}
-                          </td>
-                          <td className="py-4 px-4 text-gray-700">
-                            {payment.method}
-                          </td>
-                          <td className="py-4 px-4 text-gray-700">
-                            {payment.date.toLocaleDateString()}
-                          </td>
-                          <td className="py-4 px-4">
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                payment.status === 'completed'
-                                  ? 'bg-green-100 text-green-800'
-                                  : payment.status === 'pending'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}
-                            >
-                              {payment.status}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                  </button>
+                  
+                  <button 
+                    onClick={() => setShowFacultyForm(true)}
+                    className="w-full bg-gradient-to-r from-orange-600 to-pink-600 text-white py-4 px-6 rounded-xl hover:from-orange-700 hover:to-pink-700 transition-all duration-300 hover:scale-105 font-semibold text-lg shadow-lg hover:shadow-xl"
+                  >
+                    <div className="flex items-center justify-center space-x-3">
+                      <span className="text-2xl">👨‍🏫</span>
+                      <div className="text-left">
+                        <div>Create Faculty Profile</div>
+                        <div className="text-sm font-normal opacity-90">Comprehensive faculty registration with professional details</div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+                
+                <div className="mt-6 p-4 bg-orange-50 rounded-lg border border-orange-200">
+                  <p className="text-sm text-orange-800 text-center">
+                    <span className="font-semibold">✨ Enhanced Registration Forms</span><br/>
+                    Both forms include comprehensive data collection for complete profile management
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Announcements Tab */}
-        {selectedTab === 'announcements' && (
-          <div>
+        {/* Overview Tab */}
+        {selectedTab === 'overview' && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="card">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Broadcast Announcements
-                </h3>
-                <button className="btn-primary">Send Announcement</button>
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <UsersIcon className="w-6 h-6 text-blue-600" />
+                </div>
+          <div>
+                  <p className="text-sm text-gray-600">Total Users</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.totalUsers}</p>
+                </div>
               </div>
+            </div>
+            <div className="card">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                  <UserGroupIcon className="w-6 h-6 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Students</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.students}</p>
+                </div>
+              </div>
+            </div>
+            <div className="card">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <UserGroupIcon className="w-6 h-6 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Faculty</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.faculty}</p>
+                </div>
+              </div>
+            </div>
+            <div className="card">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                  <UserPlusIcon className="w-6 h-6 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Parents</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.parents}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Announcement Title
-                  </label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    placeholder="Enter announcement title"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Message
-                  </label>
-                  <textarea
-                    className="input-field"
-                    rows={4}
-                    placeholder="Enter your announcement message..."
-                  />
-                </div>
-                <div className="flex space-x-3">
-                  <button className="btn-secondary">Save Draft</button>
-                  <button className="btn-primary">Send to All Students</button>
+        {/* Attendance System Tab */}
+        {selectedTab === 'attendance' && (
+          <div className="card">
+            <h3 className="text-lg font-semibold text-gray-900 mb-6">
+              Attendance System Management
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <h4 className="text-md font-semibold text-gray-800 mb-4">System Features</h4>
+                <ul className="space-y-3 text-sm text-gray-600">
+                  <li className="flex items-center">
+                    <AcademicCapIcon className="w-5 h-5 text-green-500 mr-2" />
+                    QR Code based attendance scanning
+                  </li>
+                  <li className="flex items-center">
+                    <UserGroupIcon className="w-5 h-5 text-green-500 mr-2" />
+                    Real-time attendance tracking
+                  </li>
+                  <li className="flex items-center">
+                    <ChartBarIcon className="w-5 h-5 text-green-500 mr-2" />
+                    Automatic attendance percentage calculation
+                  </li>
+                  <li className="flex items-center">
+                    <BellIcon className="w-5 h-5 text-green-500 mr-2" />
+                    Parent notifications for low attendance
+                  </li>
+                </ul>
+              </div>
+              
+              <div>
+                <h4 className="text-md font-semibold text-gray-800 mb-4">Quick Actions</h4>
+                <div className="space-y-3">
+                  <button className="btn-primary w-full">
+                    View All Sessions
+                  </button>
+                  <button className="btn-secondary w-full">
+                    Generate Reports
+                  </button>
+                  <button className="btn-secondary w-full">
+                    Manage Courses
+                  </button>
                 </div>
               </div>
             </div>
           </div>
         )}
       </div>
+      
+      {/* Student Registration Form Modal */}
+      <StudentRegistrationForm
+        isOpen={showStudentForm}
+        onClose={() => setShowStudentForm(false)}
+        onSubmit={handleStudentFormSubmit}
+      />
+      
+      {/* Faculty Registration Form Modal */}
+      <FacultyRegistrationForm
+        isOpen={showFacultyForm}
+        onClose={() => setShowFacultyForm(false)}
+        onSubmit={handleFacultyFormSubmit}
+      />
     </div>
   );
 };

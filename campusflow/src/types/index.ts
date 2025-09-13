@@ -2,7 +2,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'student' | 'admin';
+  role: 'student' | 'faculty' | 'admin' | 'parent';
   createdAt: Date;
   photoURL?: string;
   semester?: string;
@@ -12,6 +12,95 @@ export interface User {
   college?: string;
   course?: string;
   year?: string;
+  branch?: string;
+  studentId?: string; // For parent role - links to their child
+  parentId?: string; // For student role - links to their parent
+  
+  // Student specific comprehensive details
+  enrollmentNumber?: string;
+  rollNumber?: string;
+  admissionYear?: number;
+  currentSemester?: number;
+  section?: string;
+  dateOfBirth?: Date;
+  gender?: 'Male' | 'Female' | 'Other';
+  bloodGroup?: string;
+  
+  // Address Information
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    country?: string;
+  };
+  
+  // Emergency Contact
+  emergencyContact?: {
+    name?: string;
+    relation?: string;
+    phone?: string;
+    email?: string;
+  };
+  
+  // Parent/Guardian Details
+  parentDetails?: {
+    fatherName?: string;
+    fatherPhone?: string;
+    fatherEmail?: string;
+    fatherOccupation?: string;
+    motherName?: string;
+    motherPhone?: string;
+    motherEmail?: string;
+    motherOccupation?: string;
+    guardianName?: string;
+    guardianPhone?: string;
+    guardianEmail?: string;
+    guardianRelation?: string;
+  };
+  
+  // Academic Background
+  academicDetails?: {
+    previousSchool?: string;
+    previousQualification?: string;
+    percentage?: number;
+    board?: string;
+    yearOfPassing?: number;
+  };
+  
+  // Medical Information
+  medicalDetails?: {
+    allergies?: string;
+    medications?: string;
+    medicalConditions?: string;
+    emergencyMedicalInfo?: string;
+  };
+  
+  // Document Information
+  documents?: {
+    aadharNumber?: string;
+    panNumber?: string;
+    passportNumber?: string;
+    drivingLicense?: string;
+  };
+  
+  // Additional Information
+  additionalInfo?: {
+    hobbies?: string;
+    achievements?: string;
+    specialSkills?: string;
+    notes?: string;
+  };
+  
+  // Course Information
+  courseInfo?: {
+    courseId?: string;
+    courseName?: string;
+    courseCode?: string;
+    branchId?: string;
+    branchName?: string;
+    subjects?: SemesterSubject[];
+  };
 }
 
 export interface Subject {
@@ -253,6 +342,132 @@ export interface AISuggestion {
   isRead: boolean;
 }
 
+// Attendance System Types
+export interface AttendanceSession {
+  id: string;
+  facultyId: string;
+  courseId: string;
+  courseName: string;
+  sectionId?: string;
+  startedAt: Date;
+  endsAt: Date;
+  currentCode: string;
+  lastCodeAt: Date;
+  isActive: boolean;
+  totalStudents: number;
+  presentStudents: number;
+  createdAt: Date;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  sessionId: string;
+  studentId: string;
+  studentName: string;
+  scannedAt: Date;
+  status: 'present' | 'late' | 'absent';
+  notes?: string;
+}
+
+export interface StudentAttendance {
+  studentId: string;
+  studentName: string;
+  totalSessions: number;
+  presentSessions: number;
+  absentSessions: number;
+  attendancePercentage: number;
+  lastAttendance?: Date;
+  courseId: string;
+  courseName: string;
+}
+
+export interface Course {
+  id: string;
+  name: string;
+  code: string;
+  facultyId: string;
+  facultyName: string;
+  semester: string;
+  year: string;
+  branch: string;
+  totalStudents: number;
+  createdAt: Date;
+}
+
+export interface Branch {
+  id: string;
+  name: string;
+  code: string;
+  description?: string;
+  createdAt: Date;
+}
+
+export interface Course {
+  id: string;
+  name: string;
+  code: string;
+  description?: string;
+  duration: number; // in semesters
+  branchId: string;
+  branchName: string;
+  createdAt: Date;
+}
+
+export interface SemesterSubject {
+  id: string;
+  courseId: string;
+  semester: number;
+  subjectName: string;
+  subjectCode: string;
+  credits: number;
+  isElective: boolean;
+  prerequisites?: string[];
+  createdAt: Date;
+}
+
+export interface StudentCourse {
+  id: string;
+  studentId: string;
+  courseId: string;
+  courseName: string;
+  courseCode: string;
+  branchId: string;
+  branchName: string;
+  currentSemester: number;
+  admissionYear: number;
+  subjects: SemesterSubject[];
+  createdAt: Date;
+}
+
+export interface StudentScore {
+  id: string;
+  studentId: string;
+  studentName: string;
+  courseId: string;
+  courseName: string;
+  assignmentId?: string;
+  examId?: string;
+  marks: number;
+  maxMarks: number;
+  grade: string;
+  semester: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ParentNotification {
+  id: string;
+  parentId: string;
+  studentId: string;
+  studentName: string;
+  type: 'attendance' | 'score' | 'general';
+  title: string;
+  message: string;
+  isRead: boolean;
+  createdAt: Date;
+  threshold?: number; // For attendance percentage alerts
+}
+
 // Updated DashboardCard type
 export interface DashboardCard {
   id: string;
@@ -282,7 +497,10 @@ export interface DashboardCard {
     | 'recent-uploads'
     | 'motivation-quote'
     | 'quick-notes'
-    | 'ai-suggestions';
+    | 'ai-suggestions'
+    | 'attendance'
+    | 'scores'
+    | 'courses';
   title: string;
   description: string;
   icon: string;

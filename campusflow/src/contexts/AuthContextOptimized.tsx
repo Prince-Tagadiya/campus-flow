@@ -69,16 +69,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } catch (firestoreError) {
         console.log('Firestore error, using fallback user data');
-          const isAdmin = user.email === 'admin@college.edu';
-          const fallbackUser: User = {
-            id: user.uid,
-            name: isAdmin ? 'System Administrator' : (user.displayName || 'User'),
-            email: user.email || '',
-            role: isAdmin ? 'admin' : 'student',
-            createdAt: new Date(),
-            photoURL: user.photoURL || undefined,
-            ...(isAdmin && { phone: '+1234567890', college: 'TrackMate University' })
-          };
+        const fallbackUser: User = {
+          id: user.uid,
+          name: user.displayName || 'User',
+          email: user.email || '',
+          role: 'student',
+          createdAt: new Date(),
+          photoURL: user.photoURL || undefined,
+        };
         setCurrentUser(fallbackUser);
       }
     } catch (error: any) {
@@ -181,16 +179,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } catch (firestoreError) {
         console.log('Firestore error, using fallback user data');
-          const isAdmin = user.email === 'admin@college.edu';
-          const fallbackUser: User = {
-            id: user.uid,
-            name: isAdmin ? 'System Administrator' : (user.displayName || 'User'),
-            email: user.email || '',
-            role: isAdmin ? 'admin' : 'student',
-            createdAt: new Date(),
-            photoURL: user.photoURL || undefined,
-            ...(isAdmin && { phone: '+1234567890', college: 'TrackMate University' })
-          };
+        const fallbackUser: User = {
+          id: user.uid,
+          name: user.displayName || 'User',
+          email: user.email || '',
+          role: 'student',
+          createdAt: new Date(),
+          photoURL: user.photoURL || undefined,
+        };
         setCurrentUser(fallbackUser);
       }
     } catch (error: any) {
@@ -239,27 +235,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           if (userDoc && userDoc.exists()) {
             const userData = userDoc.data() as User;
-            // Force admin role if email is admin@college.edu
-            if (user.email === 'admin@college.edu') {
-              userData.role = 'admin';
-              userData.name = 'System Administrator';
-              userData.phone = '+1234567890';
-              userData.college = 'TrackMate University';
-            }
             setCurrentUser(userData);
             console.log('User data loaded from Firestore:', userData);
           } else {
             // If user doesn't exist in Firestore, create them
-            // Check if this is the admin email
-            const isAdmin = user.email === 'admin@college.edu';
             const newUser: User = {
               id: user.uid,
-              name: isAdmin ? 'System Administrator' : (user.displayName || 'User'),
+              name: user.displayName || 'User',
               email: user.email || '',
-              role: isAdmin ? 'admin' : 'student',
+              role: 'student',
               createdAt: new Date(),
               photoURL: user.photoURL || undefined,
-              ...(isAdmin && { phone: '+1234567890', college: 'TrackMate University' })
             };
 
             try {
@@ -273,15 +259,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (error) {
           console.error('Error loading user data:', error);
           // Set a default user if Firestore fails
-          const isAdmin = user.email === 'admin@college.edu';
           const defaultUser: User = {
             id: user.uid,
-            name: isAdmin ? 'System Administrator' : (user.displayName || 'User'),
+            name: user.displayName || 'User',
             email: user.email || '',
-            role: isAdmin ? 'admin' : 'student',
+            role: 'student',
             createdAt: new Date(),
             photoURL: user.photoURL || undefined,
-            ...(isAdmin && { phone: '+1234567890', college: 'TrackMate University' })
           };
           setCurrentUser(defaultUser);
         } finally {
